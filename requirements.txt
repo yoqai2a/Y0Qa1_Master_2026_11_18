@@ -1,0 +1,7 @@
+streamlit>=1.45
+requests
+openpyxl
+numpy
+netCDF4
+pandas
+pygrib
