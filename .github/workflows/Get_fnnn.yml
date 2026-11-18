@@ -1,0 +1,66 @@
+name: Descargar ciclo GFS y crear NetCDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      fecha:
+        description: "Fecha del ciclo (AAAAMMDD)"
+        required: true
+        type: string
+      ciclo:
+        description: "Ciclo UTC"
+        required: true
+        type: choice
+        options:
+          - "00"
+          - "06"
+          - "12"
+          - "18"
+      forzar:
+        description: "Repetir aunque control.xlsx indique que ya existe"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gfs-${{ inputs.fecha }}-${{ inputs.ciclo }}
+  cancel-in-progress: false
+
+jobs:
+  descargar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Descargar y crear NetCDF
+        env:
+          FECHA: ${{ inputs.fecha }}
+          CICLO: ${{ inputs.ciclo }}
+          FORZAR: ${{ inputs.forzar }}
+        run: |
+          ARGS=(--fecha "$FECHA" --ciclo "$CICLO" --sin-preguntas --crear-nc)
+          if [ "$FORZAR" = "true" ]; then ARGS+=(--forzar); fi
+          python _1_YoQai_GetFnnn.py "${ARGS[@]}"
+
+      - name: Guardar control.xlsx en GitHub
+        if: success()
+        run: |
+          git add -f ___Data/control.xlsx
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Actualizar control de ciclos GFS"
+            git push
+          fi
