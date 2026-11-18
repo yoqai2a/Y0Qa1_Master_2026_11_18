@@ -1,0 +1,19 @@
+# Tokens y secretos de ejecución
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+**/secrets.toml
+
+# Las cuentas y sus hashes solo pertenecen al repositorio privado.
+**/accounts.json
+
+# Datos descargados o generados localmente; el workflow conserva control.xlsx.
+___Data/___Fnnn/
+___Data/___NC/
+___Data/___Historico/
+___Data/Control_NC.json
+
+# Archivos temporales de Python y editores
+__pycache__/
+*.py[cod]
+.venv/
+venv/
