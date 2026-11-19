@@ -6,7 +6,7 @@
 # Las cuentas y sus hashes solo pertenecen al repositorio privado.
 **/accounts.json
 
-# Datos descargados o generados localmente; el workflow conserva control.xlsx.
+# Datos grandes locales. Actions publica los .nc seleccionados y el histórico con git add -f.
 ___Data/___Fnnn/
 ___Data/___NC/
 ___Data/___Historico/
