@@ -1,6 +1,11 @@
 name: Descargar ciclo GFS y crear NetCDF
 
 on:
+  schedule:
+    - cron: "20 4 * * *"
+    - cron: "20 10 * * *"
+    - cron: "20 16 * * *"
+    - cron: "20 22 * * *"
   workflow_dispatch:
     inputs:
       fecha:
@@ -26,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: gfs-${{ inputs.fecha }}-${{ inputs.ciclo }}
+  group: gfs-${{ github.event_name }}-${{ inputs.fecha || github.run_id }}-${{ inputs.ciclo || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -34,9 +39,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -44,23 +49,71 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Resolver fecha y ciclo UTC
+        id: parametros
+        env:
+          EVENTO: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+          FECHA_MANUAL: ${{ inputs.fecha }}
+          CICLO_MANUAL: ${{ inputs.ciclo }}
+          FORZAR_MANUAL: ${{ inputs.forzar }}
+        run: |
+          if [ "$EVENTO" = "schedule" ]; then
+            FECHA=$(date -u +%Y%m%d)
+            case "$CRON" in
+              "20 4 * * *") CICLO="00" ;;
+              "20 10 * * *") CICLO="06" ;;
+              "20 16 * * *") CICLO="12" ;;
+              "20 22 * * *") CICLO="18" ;;
+              *) echo "Horario programado no reconocido: $CRON" >&2; exit 1 ;;
+            esac
+            FORZAR="false"
+          else
+            FECHA="$FECHA_MANUAL"
+            CICLO="$CICLO_MANUAL"
+            FORZAR="$FORZAR_MANUAL"
+          fi
+          echo "fecha=$FECHA" >> "$GITHUB_OUTPUT"
+          echo "ciclo=$CICLO" >> "$GITHUB_OUTPUT"
+          echo "forzar=$FORZAR" >> "$GITHUB_OUTPUT"
+          echo "Ciclo a procesar: ${FECHA} ${CICLO}Z (forzar=${FORZAR})."
+
       - name: Descargar y crear NetCDF
         env:
-          FECHA: ${{ inputs.fecha }}
-          CICLO: ${{ inputs.ciclo }}
-          FORZAR: ${{ inputs.forzar }}
+          FECHA: ${{ steps.parametros.outputs.fecha }}
+          CICLO: ${{ steps.parametros.outputs.ciclo }}
+          FORZAR: ${{ steps.parametros.outputs.forzar }}
         run: |
           ARGS=(--fecha "$FECHA" --ciclo "$CICLO" --sin-preguntas --crear-nc)
-          if [ "$FORZAR" = "true" ]; then ARGS+=(--forzar); fi
+          HISTORICO="___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
+          if [ "$FORZAR" = "true" ] || [ ! -f "$HISTORICO" ]; then ARGS+=(--forzar); fi
           python _1_YoQai_GetFnnn.py "${ARGS[@]}"
 
-      - name: Guardar control.xlsx en GitHub
+      - name: Crear histórico comprimido para Tablas
+        env:
+          FECHA: ${{ steps.parametros.outputs.fecha }}
+          CICLO: ${{ steps.parametros.outputs.ciclo }}
+          FORZAR: ${{ steps.parametros.outputs.forzar }}
+        run: |
+          HISTORICO="___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
+          if [ -f "$HISTORICO" ] && [ "$FORZAR" != "true" ]; then
+            echo "El histórico ya existe; no se vuelve a generar."
+          else
+            python _0_Visor/archivar_ciclo.py --fecha "$FECHA" --ciclo "$CICLO"
+          fi
+
+      - name: Guardar control e histórico en GitHub
         if: success()
+        env:
+          FECHA: ${{ steps.parametros.outputs.fecha }}
+          CICLO: ${{ steps.parametros.outputs.ciclo }}
         run: |
           git add -f ___Data/control.xlsx
+          git add -f "___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
+          git add -A -f ___Data/___NC
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Actualizar control de ciclos GFS"
+            git commit -m "Guardar NetCDF seleccionados, control e histórico ${FECHA} ${CICLO}Z"
             git push
           fi
