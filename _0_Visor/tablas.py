@@ -22,15 +22,53 @@ ARCHIVO_CIERRES = Path(__file__).with_name("cierres_tablas.json")
 ARCHIVOS_COLORES = {
     "gust": Path(__file__).with_name("rangos_viento.json"),
     "tp": Path(__file__).with_name("rangos_precipitacion.json"),
+    "cape": Path(__file__).with_name("rangos_cape.json"),
+    "tmax": Path(__file__).with_name("rangos_temperatura.json"),
+    "tmin": Path(__file__).with_name("rangos_temperatura.json"),
+    "gh_ceiling": Path(__file__).with_name("rangos_base_nubes.json"),
+    "vis": Path(__file__).with_name("rangos_visibilidad.json"),
 }
 HORAS_CIERRE = tuple(f"{hora:02d}" for hora in range(0, 24, 3))
 VARIABLES = {
     "Racha de viento": "gust",
     "Precipitación total (msg597 / tp)": "tp",
     "Isoterma 0 (gh_iso0)": "gh_iso0",
+    "CAPE máximo": "cape",
+    "Temperatura máxima (tmax)": "tmax",
+    "Temperatura mínima (tmin)": "tmin",
+    "Base de nubes (ceiling)": "gh_ceiling",
+    "Visibilidad": "vis",
 }
 UNIDADES_VIENTO = ("km/h", "kt", "m/s")
 FACTORES_VIENTO = {"km/h": 3.6, "kt": 1.94384449244, "m/s": 1.0}
+PREFIJOS_NC = {
+    "gust": ("gust",), "tp": ("tp_", "tp"), "gh_iso0": ("gh_iso0",),
+    "cape": ("cape",), "tmax": ("tmax_",), "tmin": ("tmin_",),
+    "gh_ceiling": ("gh_ceiling",), "vis": ("vis_",),
+}
+
+
+def _convertir_valores(valores, tipo_variable: str, unidad: str):
+    valores = np.asarray(valores, dtype=float)
+    if tipo_variable == "gust":
+        return valores * FACTORES_VIENTO[unidad]
+    if tipo_variable in {"tmax", "tmin"}:
+        return valores - 273.15
+    if tipo_variable == "gh_ceiling" and unidad == "ft":
+        return valores * 3.280839895
+    return valores
+
+
+def _resumen_serie(valores, tipo_variable: str):
+    valores = np.asarray(valores, dtype=float)
+    valores = valores[np.isfinite(valores)]
+    if not valores.size:
+        return None
+    if tipo_variable == "gh_iso0":
+        return float(np.min(valores)), float(np.max(valores))
+    if tipo_variable in {"gust", "cape", "tmax"}:
+        return float(np.max(valores))
+    return float(np.min(valores))
 
 
 def _formatea_isoterma(valor: float, centenas: bool) -> int:
@@ -80,10 +118,16 @@ def ruta_variable(clave_ciclo: str, variable: str) -> Path | None:
             # El número de mensaje GRIB puede cambiar según la edición del ciclo;
             # tp_sfc es el nombre NetCDF estable de precipitación total.
             coincidencias = sorted(carpeta.glob("*tp_sfc*.nc"))
-    else:
+    elif variable == "gh_iso0":
         coincidencias = sorted(carpeta.glob("*gh_iso0*msg416*.nc"))
         if not coincidencias:
             coincidencias = sorted(carpeta.glob("*gh_iso0*.nc"))
+    else:
+        patrones = {
+            "cape": "*cape_sfc*.nc", "tmax": "*tmax_2m*.nc", "tmin": "*tmin_2m*.nc",
+            "gh_ceiling": "*gh_ceiling*.nc", "vis": "*vis_sfc*.nc",
+        }
+        coincidencias = sorted(carpeta.glob(patrones[variable]))
     if coincidencias:
         return coincidencias[0]
     for archivo in (DIR_HISTORICO / f"{clave_ciclo}Z.csv.gz",
@@ -96,13 +140,18 @@ def ruta_variable(clave_ciclo: str, variable: str) -> Path | None:
 def guardar_historico_ciclo(clave_ciclo: str, puntos: list[dict]) -> tuple[Path, int, list[str]]:
     """Guarda comprimidas todas las series disponibles de puntos y variables del ciclo."""
     variables = (
-        ("gust", "Racha de viento", "km/h", 3.6),
-        ("tp", "Precipitación total", "mm", 1.0),
-        ("gh_iso0", "Isoterma 0", "m", 1.0),
+        ("gust", "Racha de viento", "km/h", 3.6, 0.0),
+        ("tp", "Precipitación total", "mm", 1.0, 0.0),
+        ("gh_iso0", "Isoterma 0", "m", 1.0, 0.0),
+        ("cape", "CAPE", "J/kg", 1.0, 0.0),
+        ("tmax", "Temperatura máxima", "°C", 1.0, -273.15),
+        ("tmin", "Temperatura mínima", "°C", 1.0, -273.15),
+        ("gh_ceiling", "Base de nubes", "ft", 3.280839895, 0.0),
+        ("vis", "Visibilidad", "m", 1.0, 0.0),
     )
     filas: list[dict] = []
     faltantes: list[str] = []
-    for tipo, etiqueta, unidad, factor in variables:
+    for tipo, etiqueta, unidad, factor, desplazamiento in variables:
         ruta = ruta_variable(clave_ciclo, tipo)
         if ruta is None:
             faltantes.append(etiqueta)
@@ -116,13 +165,11 @@ def guardar_historico_ciclo(clave_ciclo: str, puntos: list[dict]) -> tuple[Path,
                 raise ValueError(f"{ruta.name} no contiene latitude/longitude.")
             latitudes = np.asarray(ds.variables["latitude"][:], dtype=float)
             longitudes = ((np.asarray(ds.variables["longitude"][:], dtype=float) + 180) % 360) - 180
-            objetivo = tipo
+            objetivo = {"gh_ceiling": "gh"}.get(tipo, tipo)
             coincidencias = [
                 variable for nombre, variable in ds.variables.items()
                 if str(getattr(variable, "GRIB_shortName", "")).casefold() == objetivo
-                or nombre.casefold().startswith(
-                    ("gust",) if tipo == "gust" else ("tp_", "tp") if tipo == "tp" else ("gh_iso0",)
-                )
+                or nombre.casefold().startswith(PREFIJOS_NC[tipo])
             ]
             if not coincidencias:
                 raise ValueError(f"No se encontró la variable {tipo} dentro de {ruta.name}.")
@@ -143,7 +190,7 @@ def guardar_historico_ciclo(clave_ciclo: str, puntos: list[dict]) -> tuple[Path,
                         "Latitud": punto["lat"],
                         "Longitud": punto["lon"],
                         "Variable": etiqueta,
-                        "Valor": float(valor) * factor,
+                        "Valor": float(valor) * factor + desplazamiento,
                         "Unidad": unidad,
                         "ArchivoNetCDF": ruta.name,
                     })
@@ -262,6 +309,23 @@ def _pintar_leyenda(config: dict, titulo: str) -> None:
             )
 
 
+def rangos_base_nubes_en_unidad(config: dict, unidad: str) -> dict:
+    """Ajusta límites guardados en metros a la unidad de presentación."""
+    factor = 3.280839895 if unidad == "ft" else 1.0
+    rangos = []
+    for rango in config["rangos"]:
+        convertido = dict(rango)
+        minimo = None if rango["minimo"] is None else rango["minimo"] * factor
+        maximo = None if rango["maximo"] is None else rango["maximo"] * factor
+        convertido.update(minimo=minimo, maximo=maximo)
+        if maximo is None:
+            convertido["etiqueta"] = f"más de {int(round(minimo))} {unidad}"
+        else:
+            convertido["etiqueta"] = f"{int(round(minimo))} a {int(round(maximo))} {unidad}"
+        rangos.append(convertido)
+    return {**config, "rangos": rangos}
+
+
 def rangos_viento_en_unidad(config: dict, unidad: str) -> dict:
     """Convierte los límites almacenados en km/h a la unidad que muestra la tabla."""
     factor = FACTORES_VIENTO[unidad] / FACTORES_VIENTO["km/h"]
@@ -296,7 +360,7 @@ def _mostrar_leyenda(tipo_variable: str, unidad: str) -> None:
             config = rangos_viento_en_unidad(cargar_rangos("gust"), unidad)
             st.caption(f"Rangos y valores expresados en {unidad}.")
             _pintar_leyenda(config, "Rachas de viento")
-        else:
+        elif tipo_variable == "tp":
             config = cargar_rangos("tp")
             st.caption("AYSEN_SCCZ y ANTARTICA se muestran en gris claro, sin paleta.")
             gris = config["color_sin_paleta"]
@@ -310,6 +374,16 @@ def _mostrar_leyenda(tipo_variable: str, unidad: str) -> None:
                                  ("CORDILLERA_NORTE", "CORDILLERA NORTE")):
                 config_area = {"rangos": config.get("rangos_por_area", {}).get(area, config["rangos"])}
                 _pintar_leyenda(config_area, nombre)
+        else:
+            config = cargar_rangos(tipo_variable)
+            titulo = {
+                "cape": "CAPE máximo · J/kg", "tmax": "Temperatura máxima · °C",
+                "tmin": "Temperatura mínima · °C", "gh_ceiling": f"Base de nubes · {unidad}",
+                "vis": "Visibilidad · m",
+            }[tipo_variable]
+            if tipo_variable == "gh_ceiling":
+                config = rangos_base_nubes_en_unidad(config, unidad)
+            _pintar_leyenda(config, titulo)
 
 
 def _inicio_ciclo(ds) -> datetime:
@@ -320,6 +394,12 @@ def _inicio_ciclo(ds) -> datetime:
 
 def _fecha_hora(fecha: str, hora: str) -> datetime:
     return datetime.strptime(fecha, "%Y%m%d") + timedelta(hours=int(hora))
+
+
+def _etiqueta_periodo(fecha: str, cierre: str) -> str:
+    inicio = _fecha_hora(fecha, "04")
+    fin = _fecha_hora(fecha, cierre) + timedelta(days=1)
+    return f"{inicio:%d%m}_{inicio:%H} / {fin:%d%m}_{fin:%H}"
 
 
 def _es_historico(ruta: str | Path) -> bool:
@@ -388,13 +468,12 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
         latitudes = np.asarray(ds.variables["latitude"][:], dtype=float)
         longitudes = np.asarray(ds.variables["longitude"][:], dtype=float)
         lon_normalizadas = ((longitudes + 180) % 360) - 180
-        objetivo = tipo_variable
+        shortnames = {"gh_ceiling": "gh", "vis": "vis", "tmax": "tmax", "tmin": "tmin"}
+        objetivo = shortnames.get(tipo_variable, tipo_variable)
         coincidencias = [
             (nombre, variable) for nombre, variable in ds.variables.items()
-            if str(getattr(variable, "GRIB_shortName", "")).casefold() == objetivo
-            or nombre.casefold().startswith(
-                ("gust",) if objetivo == "gust" else ("tp_", "tp") if objetivo == "tp" else ("gh_iso0",)
-            )
+            if nombre.casefold().startswith(PREFIJOS_NC[tipo_variable])
+            or str(getattr(variable, "GRIB_shortName", "")).casefold() == objetivo
         ]
         if not coincidencias:
             raise ValueError(f"No se encontró la variable NetCDF {objetivo}.")
@@ -447,7 +526,7 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
                         resultados[fecha].setdefault(area, {})[punto] = total
                     else:
                         resultados[fecha].setdefault(area, {})[punto] = None
-            else:
+            elif tipo_variable == "gh_iso0":
                 if formato_especial:
                     horas_objetivo = (
                         _fecha_hora(fecha, "12"),
@@ -467,18 +546,15 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
                         valores = np.ma.asarray(variable[indices_especiales, iy, ix], dtype=float).filled(np.nan)
                         par = tuple(float(v) for v in valores) if np.isfinite(valores).all() else None
                         resultados[fecha].setdefault(area, {})[punto] = par
-                else:
-                    indices = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
-                    if not indices:
-                        errores[fecha] = "no hay horas del pronóstico en el período"
-                        continue
-                    for area, punto, iy, ix in puntos_indices:
-                        serie = np.ma.asarray(variable[indices, iy, ix], dtype=float).filled(np.nan)
-                        valores = serie[np.isfinite(serie)]
-                        par = (float(np.min(valores)), float(np.max(valores))) \
-                            if valores.size else None
-                        resultados[fecha].setdefault(area, {})[punto] = par
-
+            else:
+                indices = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
+                if not indices:
+                    errores[fecha] = "no hay horas del pronóstico en el período"
+                    continue
+                for area, punto, iy, ix in puntos_indices:
+                    serie = np.ma.asarray(variable[indices, iy, ix], dtype=float).filled(np.nan)
+                    serie = _convertir_valores(serie, tipo_variable, unidad)
+                    resultados[fecha].setdefault(area, {})[punto] = _resumen_serie(serie, tipo_variable)
     return {"valores": resultados, "errores": errores, "variable": nombre_variable}
 
 
@@ -486,13 +562,16 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
                                 tipo_variable: str, unidad: str, formato_especial: bool,
                                 puntos: tuple[tuple[str, str, float, float], ...]) -> dict:
     historico = _leer_historico(ruta, mtime)
-    etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0"}
+    etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0",
+                 "cape": "CAPE", "tmax": "Temperatura máxima", "tmin": "Temperatura mínima",
+                 "gh_ceiling": "Base de nubes", "vis": "Visibilidad"}
     datos = historico[historico["Variable"] == etiquetas[tipo_variable]].copy()
     if datos.empty:
         raise ValueError(f"El archivo histórico no tiene datos para {etiquetas[tipo_variable]}.")
     datos = datos.sort_values("FechaHoraUTC")
     horas = datos["FechaHoraUTC"]
     factor_viento = FACTORES_VIENTO[unidad] / FACTORES_VIENTO["km/h"] if tipo_variable == "gust" else 1.0
+    factor_ceiling = 1 / 3.280839895 if tipo_variable == "gh_ceiling" and unidad == "m" else 1.0
     resultados = {fecha: {} for fecha in fechas}
     errores = {}
 
@@ -528,7 +607,7 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
                 punto_fin = serie_punto[serie_punto["FechaHoraUTC"] == fin]
                 valor = (max(0.0, float(punto_fin.iloc[-1]["Valor"]) - float(punto_base.iloc[-1]["Valor"]))
                          if not punto_base.empty and not punto_fin.empty else None)
-            elif formato_especial:
+            elif tipo_variable == "gh_iso0" and formato_especial:
                 par = []
                 for objetivo in objetivos:
                     fila = serie_punto[serie_punto["FechaHoraUTC"] == objetivo]
@@ -537,9 +616,12 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
                         break
                     par.append(float(fila.iloc[0]["Valor"]))
                 valor = tuple(par) if len(par) == 2 else None
-            else:
+            elif tipo_variable == "gh_iso0":
                 valores = periodo.loc[(periodo["Área"] == area) & (periodo["Punto"] == punto), "Valor"]
                 valor = (float(valores.min()), float(valores.max())) if not valores.empty else None
+            else:
+                valores = periodo.loc[(periodo["Área"] == area) & (periodo["Punto"] == punto), "Valor"]
+                valor = _resumen_serie(valores.astype(float) * factor_ceiling, tipo_variable)
             resultados[fecha].setdefault(area, {})[punto] = valor
 
     return {"valores": resultados, "errores": errores, "variable": "historico"}
@@ -552,7 +634,9 @@ def calcular_serie_temporal(ruta: str, mtime: float, tipo_variable: str,
                             area: str | None = None, punto: str | None = None) -> list[dict]:
     if _es_historico(ruta):
         historico = _leer_historico(ruta, mtime)
-        etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0"}
+        etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0",
+                     "cape": "CAPE", "tmax": "Temperatura máxima", "tmin": "Temperatura mínima",
+                     "gh_ceiling": "Base de nubes", "vis": "Visibilidad"}
         serie = historico[historico["Variable"] == etiquetas[tipo_variable]]
         if area is not None and punto is not None:
             serie = serie[(serie["Área"] == area) & (serie["Punto"] == punto)]
@@ -561,10 +645,12 @@ def calcular_serie_temporal(ruta: str, mtime: float, tipo_variable: str,
             serie = serie[(serie["Longitud"] - lon).abs() < 1e-6]
         serie = serie.sort_values("FechaHoraUTC")
         factor = FACTORES_VIENTO[unidad] / FACTORES_VIENTO["km/h"] if tipo_variable == "gust" else 1.0
+        if tipo_variable == "gh_ceiling" and unidad == "m":
+            factor = 1 / 3.280839895
         salida = []
         for _, fila in serie.iterrows():
             valor = float(fila["Valor"]) * factor
-            if tipo_variable in {"gust", "tp"}:
+            if tipo_variable in {"gust", "tp", "cape", "tmax", "tmin", "gh_ceiling", "vis"}:
                 valor = int(round(valor))
             else:
                 valor = _formatea_isoterma(valor, aproximar_centenas)
@@ -576,13 +662,11 @@ def calcular_serie_temporal(ruta: str, mtime: float, tipo_variable: str,
         leads = np.asarray(ds.variables["forecast_hour"][:], dtype=float)
         validas = [inicio_ciclo + timedelta(hours=float(lead)) for lead in leads]
         indices = list(range(len(validas)))
-        objetivo = tipo_variable
+        objetivo = {"gh_ceiling": "gh"}.get(tipo_variable, tipo_variable)
         candidatas = [
             variable for nombre, variable in ds.variables.items()
-            if str(getattr(variable, "GRIB_shortName", "")).casefold() == objetivo
-            or nombre.casefold().startswith(
-                ("gust",) if objetivo == "gust" else ("tp_", "tp") if objetivo == "tp" else ("gh_iso0",)
-            )
+            if nombre.casefold().startswith(PREFIJOS_NC[tipo_variable])
+            or str(getattr(variable, "GRIB_shortName", "")).casefold() == objetivo
         ]
         if not candidatas:
             raise ValueError(f"No se encontró la variable {objetivo} en el NetCDF.")
@@ -595,21 +679,13 @@ def calcular_serie_temporal(ruta: str, mtime: float, tipo_variable: str,
         ix = int(np.nanargmin(np.abs(((longitudes - lon_objetivo + 180) % 360) - 180)))
         valores = np.ma.asarray(variable[indices, iy, ix], dtype=float).filled(np.nan)
 
-        if tipo_variable == "gust":
-            serie = [
-                {"Fecha": validas[indice], "Valor": int(round(float(valor) * FACTORES_VIENTO[unidad]))}
-                for indice, valor in zip(indices, valores) if np.isfinite(valor)
-            ]
-        elif tipo_variable == "tp":
-            serie = [
-                {"Fecha": validas[indice], "Valor": int(round(float(valor)))}
-                for indice, valor in zip(indices, valores) if np.isfinite(valor)
-            ]
+        convertidos = _convertir_valores(valores, tipo_variable, unidad)
+        if tipo_variable == "gh_iso0":
+            serie = [{"Fecha": validas[indice], "Valor": _formatea_isoterma(float(valor), aproximar_centenas)}
+                     for indice, valor in zip(indices, convertidos) if np.isfinite(valor)]
         else:
-            serie = [
-                {"Fecha": validas[indice], "Valor": _formatea_isoterma(float(valor), aproximar_centenas)}
-                for indice, valor in zip(indices, valores) if np.isfinite(valor)
-            ]
+            serie = [{"Fecha": validas[indice], "Valor": int(round(float(valor)))}
+                     for indice, valor in zip(indices, convertidos) if np.isfinite(valor)]
     return serie
 
 
@@ -637,11 +713,14 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
     with col_variable:
         variable = st.selectbox("Variable", tuple(VARIABLES), key="tablas_variable")
     tipo_variable = VARIABLES[variable]
-    opciones_unidad = UNIDADES_VIENTO if tipo_variable == "gust" else ("mm",) if tipo_variable == "tp" else ("m",)
-    key_unidad = ("tablas_unidad_viento" if tipo_variable == "gust"
-                  else "tablas_unidad_precipitacion" if tipo_variable == "tp" else "tablas_unidad_isoterma")
+    opciones_unidad = (UNIDADES_VIENTO if tipo_variable == "gust" else ("mm",) if tipo_variable == "tp"
+                       else ("m", "ft") if tipo_variable == "gh_ceiling" else ("m",) if tipo_variable == "gh_iso0"
+                       else ("J/kg",) if tipo_variable == "cape" else ("°C",) if tipo_variable in {"tmax", "tmin"}
+                       else ("m",))
+    key_unidad = f"tablas_unidad_{tipo_variable}"
     if key_unidad not in st.session_state:
-        st.session_state[key_unidad] = "km/h" if tipo_variable == "gust" else "mm" if tipo_variable == "tp" else "m"
+        st.session_state[key_unidad] = ("km/h" if tipo_variable == "gust" else "mm" if tipo_variable == "tp"
+                                        else "ft" if tipo_variable == "gh_ceiling" else opciones_unidad[0])
     with col_unidad:
         unidad = st.selectbox("Unidad", opciones_unidad, key=key_unidad)
     with col_formato:
@@ -680,11 +759,11 @@ def mostrar_tablas() -> None:
     ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas = _controles_tablas(ciclos)
     tipo_variable = VARIABLES[variable]
     ruta = ruta_variable(ciclo, tipo_variable)
-    st.caption("El día operativo va desde las 04Z de la fecha hasta la hora de cierre del día siguiente.")
+    st.caption("Cada columna muestra el período DDMM_HHinicial / DDMM_HHfinal en UTC.")
 
     if ruta is not None and not _es_historico(ruta) and st.button(
         "Guardar histórico del ciclo",
-        help="Guarda todas las horas disponibles de racha, precipitación e isoterma 0 para cada punto.",
+        help="Guarda todas las horas disponibles de las variables seleccionadas para cada punto.",
     ):
         try:
             with st.spinner("Extrayendo las series temporales del ciclo…"):
@@ -719,10 +798,7 @@ def mostrar_tablas() -> None:
         st.error(f"No se pudieron leer los datos: {exc}")
         return
 
-    fechas_columna = {
-        fecha: datetime.strptime(fecha, "%Y%m%d").strftime("%d-%m-%Y")
-        for fecha in fechas
-    }
+    fechas_columna = {fecha: _etiqueta_periodo(fecha, cierre) for fecha in fechas}
     areas = list(dict.fromkeys(area for area, _, _, _ in puntos))
     resumen = []
     detalle_por_area = {}
@@ -757,12 +833,17 @@ def mostrar_tablas() -> None:
                     primero = _formatea_isoterma(min(valor[0] for valor in valores_area), aproximar_centenas)
                     segundo = _formatea_isoterma(max(valor[1] for valor in valores_area), aproximar_centenas)
                 fila_area[etiqueta] = f"{primero} / {segundo}"
+            elif tipo_variable in {"tmin", "gh_ceiling", "vis"}:
+                fila_area[etiqueta] = min(valores_area)
             else:
                 fila_area[etiqueta] = max(valores_area)
         resumen.append(fila_area)
         detalle_por_area[area] = detalle
 
-    titulo_tabla = "Isoterma 0 por área" if tipo_variable == "gh_iso0" else "Máximo por área"
+    titulo_tabla = {"gh_iso0": "Isoterma 0 por área", "cape": "CAPE máximo por área",
+                    "tmax": "Temperatura máxima por área", "tmin": "Temperatura mínima por área",
+                    "gh_ceiling": "Base de nubes mínima por área", "vis": "Visibilidad mínima por área"}.get(
+                        tipo_variable, "Máximo por área")
     st.subheader(f"{titulo_tabla} · selecciona una fila para ver los puntos")
     if tipo_variable == "gh_iso0":
         st.caption(
@@ -770,7 +851,8 @@ def mostrar_tablas() -> None:
             if formato_especial else "Cada celda muestra el mínimo / máximo del período diario."
         )
     evento_area = st.dataframe(
-        _tabla_con_colores(resumen, tipo_variable, config_colores),
+        _tabla_con_colores(resumen, tipo_variable, config_colores,
+                           escala=1 / 3.280839895 if tipo_variable == "gh_ceiling" and unidad == "ft" else 1),
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
@@ -784,6 +866,7 @@ def mostrar_tablas() -> None:
         st.markdown(f"#### {area} · detalle de puntos")
         evento_punto = st.dataframe(
             _tabla_con_colores(detalle_por_area[area], tipo_variable, config_colores,
+                               escala=1 / 3.280839895 if tipo_variable == "gh_ceiling" and unidad == "ft" else 1,
                                area_detalle=area),
             use_container_width=True,
             hide_index=True,
@@ -809,6 +892,11 @@ def mostrar_tablas() -> None:
                         "gust": "Rachas en todos los horarios de pronóstico disponibles.",
                         "tp": "Precipitación acumulada desde el inicio del ciclo, en todos los horarios disponibles.",
                         "gh_iso0": "Altura de la isoterma 0 en todos los horarios de pronóstico disponibles.",
+                        "cape": "CAPE en J/kg, máximo del período.",
+                        "tmax": "Temperatura máxima del período, convertida de K a °C.",
+                        "tmin": "Temperatura mínima del período, convertida de K a °C.",
+                        "gh_ceiling": "Menor altura de base de nubes durante el período.",
+                        "vis": "Menor visibilidad durante el período.",
                     }
                     st.caption(descripciones[tipo_variable])
                 else:
