@@ -18,7 +18,7 @@ eliminar_fnnn = true               # true: al terminar la conversión con éxito
 carpeta_salida = "___Data/___NC"   # se crea <carpeta>/<AAAAMMDD>/<HH>/
 prefijo = "Y0QA1Map"
 grupos = ["Main", "Extra"]         # grupos de __Variables_NC.toml que se escriben
-conservar_ciclos = 12              # ciclos que se conservan en la salida (12 = 3 días)
+conservar_ciclos = 10              # ciclos de 6 h para mantener aproximadamente las últimas 60 horas
 
 # Cómo se reparten las variables en archivos:
 #   "capa"      un archivo por variable y nivel (t_850hPa.nc). El visor baja solo

@@ -4,6 +4,8 @@ Este repositorio contiene el código del visor y los workflows de descarga. Las 
 
 ## Configuración de los dos repositorios
 
+La lista de tokens, sus permisos exactos y el lugar donde guardarlos está en [TOKENS_Y0QA1.md](TOKENS_Y0QA1.md).
+
 En la configuración privada del entorno Streamlit (o en `%USERPROFILE%\.streamlit\secrets.toml` para uso local) define:
 
 ```toml
@@ -35,4 +37,10 @@ Para desplegar el visor en Streamlit Community Cloud, usa `_0_Visor/Y0Qa1_Panel.
 
 ## Datos NetCDF
 
-El workflow guarda el control de ciclos en `___Data/control.xlsx`. Los NetCDF, archivos GRIB e históricos generados localmente se excluyen del repositorio; se crean en `___Data` al ejecutar descargas y conversiones.
+El workflow guarda el control de ciclos en `___Data/control.xlsx`, los históricos comprimidos por ciclo en `___Data/___Historico/YYYYMMDD_CCZ.csv.gz` y los NetCDF habilitados en `_2_CreaNC/seleccion_nc.json`. El control registra una fila por fecha y columnas para 00, 06, 12 y 18 UTC. La selección predeterminada guarda `gust_sfc`, `tp_sfc` y `gh_iso0`; las demás variables están desactivadas. Se conservan 10 ciclos de seis horas (aproximadamente 60 horas) en la carpeta `___Data/___NC`.
+
+El archivo JSON enumera las variables NetCDF disponibles. Cambia cada valor de `archivos` a `true` o `false`; los ausentes se consideran desactivados. La limpieza retira ciclos antiguos del árbol actual del repositorio, aunque Git mantiene sus objetos en el historial de commits.
+
+El workflow también se programa diariamente a las 04:20, 10:20, 16:20 y 22:20 UTC. Cada ejecución automática procesa el ciclo 00Z, 06Z, 12Z o 18Z correspondiente, respectivamente.
+
+Para ciclos descargados antes de esta modificación, vuelve a iniciar ese ciclo una vez marcando **Forzar aunque control.xlsx indique que ya existe**. El workflow regenerará el ciclo y publicará su histórico; las descargas nuevas lo publican automáticamente.

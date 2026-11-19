@@ -61,7 +61,10 @@ def _leer_remoto() -> tuple[dict, str]:
             if respuesta.status_code in (401, 403, 404):
                 raise ErrorCuentas(
                     f"No se pudo leer {archivo} del repositorio privado "
-                    f"(GitHub {respuesta.status_code}). Revisa el repo, la rama y el permiso Contents."
+                    f"(GitHub {respuesta.status_code}). Revisa AUTH_GITHUB_REPO (owner/repo), "
+                    "AUTH_GITHUB_BRANCH, AUTH_GITHUB_FILE y que el token fine-grained incluya "
+                    "este repositorio privado con Contents: read. GitHub también responde 404 "
+                    "cuando un token no está autorizado para ver un repo privado."
                 )
             raise ErrorCuentas(f"GitHub respondió {respuesta.status_code} al leer las cuentas.")
         contenido = base64.b64decode(respuesta.json().get("content", "")).decode("utf-8")

@@ -11,6 +11,7 @@ Uso (desde la raíz del proyecto):
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,7 @@ CARPETA_MODULO = Path(__file__).resolve().parent
 RAIZ_PROYECTO = CARPETA_MODULO.parent
 CONFIG_DEFECTO = CARPETA_MODULO / "__Configuracion_NC.toml"
 VARIABLES_DEFECTO = CARPETA_MODULO / "__Variables_NC.toml"
+SELECCION_DEFECTO = CARPETA_MODULO / "seleccion_nc.json"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -37,6 +39,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--ciclo", choices=("00", "06", "12", "18"), help="Ciclo UTC")
     p.add_argument("--config", type=Path, default=CONFIG_DEFECTO, help="__Configuracion_NC.toml")
     p.add_argument("--variables", type=Path, default=VARIABLES_DEFECTO, help="__Variables_NC.toml")
+    p.add_argument("--seleccion-nc", type=Path, default=SELECCION_DEFECTO,
+                   help="JSON que decide qué archivos NetCDF se generan")
     p.add_argument("--agrupacion", choices=("capa", "variable", "grupo", "unico"),
                    help="Sustituye a [salida] agrupacion")
     p.add_argument("--grupos", nargs="+", help="Sustituye a [salida] grupos (ej.: Main)")
@@ -71,6 +75,20 @@ def main(argv: list[str] | None = None) -> int:
                                    False if args.conservar_fnnn else None)
         todas = cargar_variables(args.variables)
         capas = [c for c in todas if c.grupo in cfg.salida.grupos]
+        try:
+            seleccion = json.loads(args.seleccion_nc.read_text(encoding="utf-8-sig"))["archivos"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise ErrorVariables(f"No se pudo leer la selección NetCDF {args.seleccion_nc}: {exc}") from exc
+        if not isinstance(seleccion, dict) or any(not isinstance(v, bool) for v in seleccion.values()):
+            raise ErrorVariables(f"{args.seleccion_nc}: 'archivos' debe ser un objeto con valores true/false.")
+        nombres_disponibles = {c.nombre for c in capas}
+        desconocidos = sorted(k for k, v in seleccion.items() if v and k not in nombres_disponibles)
+        if desconocidos:
+            raise ErrorVariables("La selección activa contiene nombres que no están en __Variables_NC.toml: "
+                                 + ", ".join(desconocidos[:8]))
+        capas = [c for c in capas if seleccion.get(c.nombre, False)]
+        if not capas:
+            raise ErrorVariables(f"{args.seleccion_nc}: no hay archivos NetCDF seleccionados.")
         if not capas:
             grupos = sorted({c.grupo for c in todas})
             raise ErrorVariables(f"Ninguna variable pertenece a los grupos {list(cfg.salida.grupos)} "

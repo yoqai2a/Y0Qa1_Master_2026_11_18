@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import json
 import os
 from datetime import datetime, timedelta
@@ -41,8 +42,21 @@ def _formatea_isoterma(valor: float, centenas: bool) -> int:
 
 
 def listar_ciclos() -> list[tuple[str, Path]]:
-    """Encuentra ciclos locales que incluyen el NetCDF de rachas."""
+    """Encuentra ciclos disponibles en NetCDF local o en históricos publicados."""
     ciclos: dict[str, Path] = {}
+    if DIR_HISTORICO.is_dir():
+        for archivo in DIR_HISTORICO.glob("*_??Z.csv*"):
+            base = archivo.name.removesuffix(".csv.gz").removesuffix(".csv")
+            if not base.endswith("Z"):
+                continue
+            clave = base[:-1]
+            try:
+                fecha, ciclo = clave.split("_")
+                datetime.strptime(fecha, "%Y%m%d")
+            except ValueError:
+                continue
+            if ciclo in {"00", "06", "12", "18"}:
+                ciclos[clave] = archivo
     if DIR_NC.is_dir():
         for archivo in DIR_NC.glob("*/*/*gust*.nc"):
             fecha, ciclo = archivo.parent.parent.name, archivo.parent.name
@@ -70,11 +84,17 @@ def ruta_variable(clave_ciclo: str, variable: str) -> Path | None:
         coincidencias = sorted(carpeta.glob("*gh_iso0*msg416*.nc"))
         if not coincidencias:
             coincidencias = sorted(carpeta.glob("*gh_iso0*.nc"))
-    return coincidencias[0] if coincidencias else None
+    if coincidencias:
+        return coincidencias[0]
+    for archivo in (DIR_HISTORICO / f"{clave_ciclo}Z.csv.gz",
+                    DIR_HISTORICO / f"{clave_ciclo}Z.csv"):
+        if archivo.is_file():
+            return archivo
+    return None
 
 
 def guardar_historico_ciclo(clave_ciclo: str, puntos: list[dict]) -> tuple[Path, int, list[str]]:
-    """Guarda en un CSV todas las series disponibles de puntos y variables del ciclo."""
+    """Guarda comprimidas todas las series disponibles de puntos y variables del ciclo."""
     variables = (
         ("gust", "Racha de viento", "km/h", 3.6),
         ("tp", "Precipitación total", "mm", 1.0),
@@ -129,12 +149,12 @@ def guardar_historico_ciclo(clave_ciclo: str, puntos: list[dict]) -> tuple[Path,
                     })
 
     DIR_HISTORICO.mkdir(parents=True, exist_ok=True)
-    destino = DIR_HISTORICO / f"{clave_ciclo}Z.csv"
+    destino = DIR_HISTORICO / f"{clave_ciclo}Z.csv.gz"
     temporal = destino.with_name(destino.name + ".part")
     columnas = ("Ciclo", "FechaHoraUTC", "Área", "Punto", "Latitud", "Longitud",
                 "Variable", "Valor", "Unidad", "ArchivoNetCDF")
     try:
-        with temporal.open("w", encoding="utf-8-sig", newline="") as archivo:
+        with gzip.open(temporal, "wt", encoding="utf-8-sig", newline="") as archivo:
             escritor = csv.DictWriter(archivo, fieldnames=columnas)
             escritor.writeheader()
             escritor.writerows(filas)
@@ -302,13 +322,32 @@ def _fecha_hora(fecha: str, hora: str) -> datetime:
     return datetime.strptime(fecha, "%Y%m%d") + timedelta(hours=int(hora))
 
 
+def _es_historico(ruta: str | Path) -> bool:
+    return str(ruta).endswith((".csv", ".csv.gz"))
+
+
+@st.cache_data(show_spinner=False)
+def _leer_historico(ruta: str, mtime: float) -> pd.DataFrame:
+    del mtime
+    datos = pd.read_csv(ruta, compression="infer", parse_dates=["FechaHoraUTC"])
+    requeridas = {"FechaHoraUTC", "Área", "Punto", "Variable", "Valor"}
+    if not requeridas.issubset(datos.columns):
+        raise ValueError("El histórico comprimido no tiene las columnas requeridas.")
+    datos["Valor"] = pd.to_numeric(datos["Valor"], errors="coerce")
+    return datos.dropna(subset=["FechaHoraUTC", "Valor"])
+
+
 @st.cache_data(show_spinner=False)
 def fechas_disponibles(ruta: str, mtime: float) -> list[str]:
-    del mtime  # el valor también forma parte de la clave de caché
-    with Dataset(ruta, "r") as ds:
-        base = _inicio_ciclo(ds)
-        leads = np.asarray(ds.variables["forecast_hour"][:], dtype=float)
-        validas = [base + timedelta(hours=float(lead)) for lead in leads]
+    if _es_historico(ruta):
+        datos = _leer_historico(ruta, mtime)
+        validas = datos["FechaHoraUTC"].sort_values().tolist()
+    else:
+        del mtime  # el valor también forma parte de la clave de caché
+        with Dataset(ruta, "r") as ds:
+            base = _inicio_ciclo(ds)
+            leads = np.asarray(ds.variables["forecast_hour"][:], dtype=float)
+            validas = [base + timedelta(hours=float(lead)) for lead in leads]
     if not validas:
         return []
     minimo, maximo = min(validas), max(validas)
@@ -328,6 +367,10 @@ def fechas_disponibles(ruta: str, mtime: float) -> list[str]:
 def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: str,
                      tipo_variable: str, unidad: str, formato_especial: bool,
                      puntos: tuple[tuple[str, str, float, float], ...]) -> dict:
+    if _es_historico(ruta):
+        return _calcular_maximos_historico(
+            ruta, mtime, fechas, cierre, tipo_variable, unidad, formato_especial, puntos
+        )
     del mtime  # el valor también forma parte de la clave de caché
     resultados = {fecha: {} for fecha in fechas}
     errores = {}
@@ -439,10 +482,94 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
     return {"valores": resultados, "errores": errores, "variable": nombre_variable}
 
 
+def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: str,
+                                tipo_variable: str, unidad: str, formato_especial: bool,
+                                puntos: tuple[tuple[str, str, float, float], ...]) -> dict:
+    historico = _leer_historico(ruta, mtime)
+    etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0"}
+    datos = historico[historico["Variable"] == etiquetas[tipo_variable]].copy()
+    if datos.empty:
+        raise ValueError(f"El archivo histórico no tiene datos para {etiquetas[tipo_variable]}.")
+    datos = datos.sort_values("FechaHoraUTC")
+    horas = datos["FechaHoraUTC"]
+    factor_viento = FACTORES_VIENTO[unidad] / FACTORES_VIENTO["km/h"] if tipo_variable == "gust" else 1.0
+    resultados = {fecha: {} for fecha in fechas}
+    errores = {}
+
+    for fecha in fechas:
+        comienzo = pd.Timestamp(_fecha_hora(fecha, "04"))
+        fin = pd.Timestamp(_fecha_hora(fecha, cierre) + timedelta(days=1))
+        if horas.min() > comienzo:
+            errores[fecha] = "el ciclo no llega a la hora inicial 04Z"
+            continue
+        if horas.max() < fin:
+            errores[fecha] = f"el ciclo no llega al cierre {fin:%Y-%m-%d %HZ}"
+            continue
+
+        if tipo_variable == "gh_iso0" and formato_especial:
+            objetivos = (pd.Timestamp(_fecha_hora(fecha, "12")),
+                         pd.Timestamp(_fecha_hora(fecha, "00") + timedelta(days=1)))
+            if any(not (horas == objetivo).any() for objetivo in objetivos):
+                errores[fecha] = "no están disponibles ambas horas del formato especial 12Z / 00Z"
+                continue
+        elif tipo_variable == "tp":
+            if not (horas == fin).any() or not (horas <= comienzo).any():
+                errores[fecha] = "el histórico no tiene los horarios necesarios para el acumulado diario"
+                continue
+
+        periodo = datos[(horas >= comienzo) & (horas <= fin)]
+        for area, punto, _, _ in puntos:
+            serie_punto = datos[(datos["Área"] == area) & (datos["Punto"] == punto)]
+            if tipo_variable == "gust":
+                valores = periodo.loc[(periodo["Área"] == area) & (periodo["Punto"] == punto), "Valor"]
+                valor = float(valores.max()) * factor_viento if not valores.empty else None
+            elif tipo_variable == "tp":
+                punto_base = serie_punto[serie_punto["FechaHoraUTC"] <= comienzo]
+                punto_fin = serie_punto[serie_punto["FechaHoraUTC"] == fin]
+                valor = (max(0.0, float(punto_fin.iloc[-1]["Valor"]) - float(punto_base.iloc[-1]["Valor"]))
+                         if not punto_base.empty and not punto_fin.empty else None)
+            elif formato_especial:
+                par = []
+                for objetivo in objetivos:
+                    fila = serie_punto[serie_punto["FechaHoraUTC"] == objetivo]
+                    if fila.empty:
+                        par = []
+                        break
+                    par.append(float(fila.iloc[0]["Valor"]))
+                valor = tuple(par) if len(par) == 2 else None
+            else:
+                valores = periodo.loc[(periodo["Área"] == area) & (periodo["Punto"] == punto), "Valor"]
+                valor = (float(valores.min()), float(valores.max())) if not valores.empty else None
+            resultados[fecha].setdefault(area, {})[punto] = valor
+
+    return {"valores": resultados, "errores": errores, "variable": "historico"}
+
+
 @st.cache_data(show_spinner="Leyendo la serie del punto…")
 def calcular_serie_temporal(ruta: str, mtime: float, tipo_variable: str,
                             unidad: str, lat: float, lon: float,
-                            aproximar_centenas: bool = True) -> list[dict]:
+                            aproximar_centenas: bool = True,
+                            area: str | None = None, punto: str | None = None) -> list[dict]:
+    if _es_historico(ruta):
+        historico = _leer_historico(ruta, mtime)
+        etiquetas = {"gust": "Racha de viento", "tp": "Precipitación total", "gh_iso0": "Isoterma 0"}
+        serie = historico[historico["Variable"] == etiquetas[tipo_variable]]
+        if area is not None and punto is not None:
+            serie = serie[(serie["Área"] == area) & (serie["Punto"] == punto)]
+        else:
+            serie = serie[(serie["Latitud"] - lat).abs() < 1e-6]
+            serie = serie[(serie["Longitud"] - lon).abs() < 1e-6]
+        serie = serie.sort_values("FechaHoraUTC")
+        factor = FACTORES_VIENTO[unidad] / FACTORES_VIENTO["km/h"] if tipo_variable == "gust" else 1.0
+        salida = []
+        for _, fila in serie.iterrows():
+            valor = float(fila["Valor"]) * factor
+            if tipo_variable in {"gust", "tp"}:
+                valor = int(round(valor))
+            else:
+                valor = _formatea_isoterma(valor, aproximar_centenas)
+            salida.append({"Fecha": fila["FechaHoraUTC"], "Valor": valor})
+        return salida
     del mtime  # el valor también forma parte de la clave de caché
     with Dataset(ruta, "r") as ds:
         inicio_ciclo = _inicio_ciclo(ds)
@@ -547,7 +674,7 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
 def mostrar_tablas() -> None:
     ciclos = listar_ciclos()
     if not ciclos:
-        st.warning(f"No se encontraron archivos *gust*.nc en `{DIR_NC}`.")
+        st.warning(f"No se encontraron NetCDF locales ni históricos de ciclos en `{DIR_HISTORICO}`.")
         return
 
     ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas = _controles_tablas(ciclos)
@@ -555,7 +682,10 @@ def mostrar_tablas() -> None:
     ruta = ruta_variable(ciclo, tipo_variable)
     st.caption("El día operativo va desde las 04Z de la fecha hasta la hora de cierre del día siguiente.")
 
-    if st.button("Guardar histórico del ciclo", help="Guarda todas las horas disponibles de racha, precipitación e isoterma 0 para cada punto."):
+    if ruta is not None and not _es_historico(ruta) and st.button(
+        "Guardar histórico del ciclo",
+        help="Guarda todas las horas disponibles de racha, precipitación e isoterma 0 para cada punto.",
+    ):
         try:
             with st.spinner("Extrayendo las series temporales del ciclo…"):
                 archivo, cantidad, faltantes = guardar_historico_ciclo(ciclo, cargar_puntos())
@@ -670,6 +800,7 @@ def mostrar_tablas() -> None:
                 serie = calcular_serie_temporal(
                     str(ruta), mtime, tipo_variable, unidad,
                     coord_punto[2], coord_punto[3], aproximar_centenas,
+                    area=coord_punto[0], punto=coord_punto[1],
                 )
                 st.markdown(f"#### Serie temporal completa · {punto}")
                 if serie:
