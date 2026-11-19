@@ -420,7 +420,7 @@ def _leer_historico(ruta: str, mtime: float) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def fechas_disponibles(ruta: str, mtime: float) -> list[str]:
+def fechas_disponibles(ruta: str, mtime: float, permitir_inicio_incompleto: bool = False) -> list[str]:
     if _es_historico(ruta):
         datos = _leer_historico(ruta, mtime)
         validas = datos["FechaHoraUTC"].sort_values().tolist()
@@ -439,7 +439,7 @@ def fechas_disponibles(ruta: str, mtime: float) -> list[str]:
         fecha = dia.strftime("%Y%m%d")
         comienzo = _fecha_hora(fecha, "04")
         cierre_default = _fecha_hora(fecha, "03") + timedelta(days=1)
-        if minimo <= comienzo and cierre_default <= maximo:
+        if (permitir_inicio_incompleto or minimo <= comienzo) and cierre_default <= maximo:
             fechas.append(fecha)
         dia += timedelta(days=1)
     return fechas
@@ -491,7 +491,7 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
         for fecha in fechas:
             comienzo = _fecha_hora(fecha, "04")
             fin = _fecha_hora(fecha, cierre) + timedelta(days=1)
-            if min(validas) > comienzo:
+            if min(validas) > comienzo and tipo_variable != "gh_iso0":
                 errores[fecha] = "el ciclo no llega a la hora inicial 04Z"
                 continue
             if max(validas) < fin:
@@ -590,7 +590,7 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
     for fecha in fechas:
         comienzo = pd.Timestamp(_fecha_hora(fecha, "04"))
         fin = pd.Timestamp(_fecha_hora(fecha, cierre) + timedelta(days=1))
-        if horas.min() > comienzo:
+        if horas.min() > comienzo and tipo_variable != "gh_iso0":
             errores[fecha] = "el ciclo no llega a la hora inicial 04Z"
             continue
         if horas.max() < fin:
@@ -772,6 +772,8 @@ def mostrar_tablas() -> None:
     tipo_variable = VARIABLES[variable]
     ruta = ruta_variable(ciclo, tipo_variable)
     st.caption("Cada columna muestra el período DDMM_HHinicial / DDMM_HHfinal en UTC.")
+    if tipo_variable == "gh_iso0":
+        st.caption("Con el modo especial desactivado se calcula mínimo / máximo con las horas disponibles del período.")
 
     if ruta is not None and not _es_historico(ruta) and st.button(
         "Guardar histórico del ciclo",
@@ -795,7 +797,9 @@ def mostrar_tablas() -> None:
 
     mtime = ruta.stat().st_mtime
     try:
-        fechas = tuple(fechas_disponibles(str(ruta), mtime))
+        fechas = tuple(fechas_disponibles(
+            str(ruta), mtime, permitir_inicio_incompleto=(tipo_variable == "gh_iso0")
+        ))
         if not fechas:
             st.info("Este ciclo no cubre un día completo desde 04Z hasta 03Z del día siguiente.")
             return
