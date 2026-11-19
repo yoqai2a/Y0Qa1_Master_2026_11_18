@@ -1,16 +1,14 @@
 {
   "variable": "vis",
-  "nombre": "Visibilidad (escala de referencia en metros)",
+  "nombre": "Visibilidad",
   "unidad_umbral": "m",
   "rangos": [
-    {"etiqueta": "0 a 10 m", "minimo": 0, "maximo": 10, "incluye_minimo": true, "incluye_maximo": true, "fondo": "#8B0000", "texto": "#FFFFFF"},
-    {"etiqueta": "más de 10 a 30 m", "minimo": 10, "maximo": 30, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#E53935", "texto": "#FFFFFF"},
-    {"etiqueta": "más de 30 a 100 m", "minimo": 30, "maximo": 100, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#F28C28", "texto": "#202938"},
-    {"etiqueta": "más de 100 a 300 m", "minimo": 100, "maximo": 300, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#F6D84A", "texto": "#202938"},
-    {"etiqueta": "más de 300 a 1.000 m", "minimo": 300, "maximo": 1000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#55CC55", "texto": "#202938"},
-    {"etiqueta": "más de 1.000 a 3.000 m", "minimo": 1000, "maximo": 3000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#22A66B", "texto": "#FFFFFF"},
-    {"etiqueta": "más de 3.000 a 6.000 m", "minimo": 3000, "maximo": 6000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#87CEEB", "texto": "#202938"},
-    {"etiqueta": "más de 6.000 a 10.000 m", "minimo": 6000, "maximo": 10000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#FFFFFF", "texto": "#202938"},
-    {"etiqueta": "más de 10.000 m", "minimo": 10000, "maximo": null, "incluye_minimo": false, "incluye_maximo": false, "fondo": "#FFFFFF", "texto": "#202938"}
+    {"etiqueta": "bajo 200 m", "minimo": null, "maximo": 200, "incluye_minimo": false, "incluye_maximo": false, "fondo": "#550055", "texto": "#55CCEE"},
+    {"etiqueta": "200 a 500 m", "minimo": 200, "maximo": 500, "incluye_minimo": true, "incluye_maximo": true, "fondo": "#000055", "texto": "#55CCEE"},
+    {"etiqueta": "más de 500 a 1.000 m", "minimo": 500, "maximo": 1000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#0000FF", "texto": "#FFFFFF"},
+    {"etiqueta": "más de 1.000 a 3.000 m", "minimo": 1000, "maximo": 3000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#55CCEE", "texto": "#202938"},
+    {"etiqueta": "más de 3.000 a 5.000 m", "minimo": 3000, "maximo": 5000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#BBEEFF", "texto": "#202938"},
+    {"etiqueta": "más de 5.000 a 10.000 m", "minimo": 5000, "maximo": 10000, "incluye_minimo": false, "incluye_maximo": true, "fondo": "#CCFFCC", "texto": "#000000"},
+    {"etiqueta": "más de 10.000 m", "minimo": 10000, "maximo": null, "incluye_minimo": false, "incluye_maximo": false, "fondo": "#FFFFFF", "texto": "#000000"}
   ]
 }

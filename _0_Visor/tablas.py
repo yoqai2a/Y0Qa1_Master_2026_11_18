@@ -310,15 +310,17 @@ def _pintar_leyenda(config: dict, titulo: str) -> None:
 
 
 def rangos_base_nubes_en_unidad(config: dict, unidad: str) -> dict:
-    """Ajusta límites guardados en metros a la unidad de presentación."""
-    factor = 3.280839895 if unidad == "ft" else 1.0
+    """Ajusta límites guardados en pies a la unidad de presentación."""
+    factor = 1.0 if unidad == "ft" else 1 / 3.280839895
     rangos = []
     for rango in config["rangos"]:
         convertido = dict(rango)
         minimo = None if rango["minimo"] is None else rango["minimo"] * factor
         maximo = None if rango["maximo"] is None else rango["maximo"] * factor
         convertido.update(minimo=minimo, maximo=maximo)
-        if maximo is None:
+        if minimo is None:
+            convertido["etiqueta"] = f"bajo {int(round(maximo))} {unidad}"
+        elif maximo is None:
             convertido["etiqueta"] = f"más de {int(round(minimo))} {unidad}"
         else:
             convertido["etiqueta"] = f"{int(round(minimo))} a {int(round(maximo))} {unidad}"
@@ -545,6 +547,16 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
                     for area, punto, iy, ix in puntos_indices:
                         valores = np.ma.asarray(variable[indices_especiales, iy, ix], dtype=float).filled(np.nan)
                         par = tuple(float(v) for v in valores) if np.isfinite(valores).all() else None
+                        resultados[fecha].setdefault(area, {})[punto] = par
+                else:
+                    indices = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
+                    if not indices:
+                        errores[fecha] = "no hay horas del pronóstico en el período"
+                        continue
+                    for area, punto, iy, ix in puntos_indices:
+                        serie = np.ma.asarray(variable[indices, iy, ix], dtype=float).filled(np.nan)
+                        valores = serie[np.isfinite(serie)]
+                        par = (float(np.min(valores)), float(np.max(valores))) if valores.size else None
                         resultados[fecha].setdefault(area, {})[punto] = par
             else:
                 indices = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
@@ -852,7 +864,7 @@ def mostrar_tablas() -> None:
         )
     evento_area = st.dataframe(
         _tabla_con_colores(resumen, tipo_variable, config_colores,
-                           escala=1 / 3.280839895 if tipo_variable == "gh_ceiling" and unidad == "ft" else 1),
+                           escala=3.280839895 if tipo_variable == "gh_ceiling" and unidad == "m" else 1),
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
@@ -866,7 +878,7 @@ def mostrar_tablas() -> None:
         st.markdown(f"#### {area} · detalle de puntos")
         evento_punto = st.dataframe(
             _tabla_con_colores(detalle_por_area[area], tipo_variable, config_colores,
-                               escala=1 / 3.280839895 if tipo_variable == "gh_ceiling" and unidad == "ft" else 1,
+                               escala=3.280839895 if tipo_variable == "gh_ceiling" and unidad == "m" else 1,
                                area_detalle=area),
             use_container_width=True,
             hide_index=True,
