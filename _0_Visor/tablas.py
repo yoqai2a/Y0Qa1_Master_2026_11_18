@@ -723,8 +723,8 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
     if "tablas_cierre" not in st.session_state:
         st.session_state["tablas_cierre"] = cargar_cierre_global()
 
-    col_ciclo, col_cierre, col_variable, col_unidad, col_formato, col_guardar, col_guardar_historico, col_leyenda = st.columns(
-        [1.8, 0.9, 2, 0.8, 1.25, 1.1, 1.2, 0.8]
+    col_ciclo, col_cierre, col_variable, col_unidad, col_formato, col_guardar, col_guardar_historico, col_leyenda, col_pdf = st.columns(
+        [1.8, 0.9, 2, 0.8, 1.25, 1.1, 1.2, 0.8, 1.6]
     )
     with col_ciclo:
         ciclo = st.selectbox("Ciclo", opciones_ciclo, format_func=lambda v: ciclo_labels[v],
@@ -784,6 +784,24 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
                 st.error(f"No se pudo guardar el histórico: {exc}")
     with col_leyenda:
         _mostrar_leyenda(tipo_variable, unidad)
+    clave_pdf = (ciclo, cierre, formato_especial, aproximar_centenas)
+    with col_pdf:
+        if st.button("Crear PDF", use_container_width=True, key="crear_pdf_tablas"):
+            try:
+                from pdf_tablas import generar_pdf_tablas
+                with st.spinner("Preparando las cuatro tablas para imprimir…"):
+                    contenido_pdf = generar_pdf_tablas(ciclo, cierre, formato_especial, aproximar_centenas)
+                st.session_state["pdf_tablas_generado"] = {"clave": clave_pdf, "contenido": contenido_pdf}
+            except Exception as exc:
+                st.session_state.pop("pdf_tablas_generado", None)
+                st.error(f"No se pudo crear el PDF: {exc}")
+        pdf_generado = st.session_state.get("pdf_tablas_generado", {})
+        if pdf_generado.get("clave") == clave_pdf:
+            st.download_button(
+                "Descargar PDF", data=pdf_generado["contenido"],
+                file_name=f"Y0Qa1_Tablas_{ciclo}_{cierre}Z.pdf", mime="application/pdf",
+                use_container_width=True, key="descargar_pdf_tablas",
+            )
     return ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas
 
 
@@ -796,15 +814,6 @@ def mostrar_tablas() -> None:
     ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas = _controles_tablas(ciclos)
     tipo_variable = VARIABLES[variable]
     ruta = ruta_variable(ciclo, tipo_variable)
-    from pdf_tablas import generar_pdf_tablas
-    st.download_button(
-        "Descargar PDF imprimible",
-        data=lambda: generar_pdf_tablas(ciclo, cierre, formato_especial, aproximar_centenas),
-        file_name=f"Y0Qa1_Tablas_{ciclo}_{cierre}Z.pdf",
-        mime="application/pdf",
-        key=f"descargar_pdf_tablas_{ciclo}_{cierre}",
-        help="Incluye precipitación, CAPE, racha de viento e isoterma 0 con el mismo ciclo y cierre.",
-    )
     if ruta is None:
         if tipo_variable == "tp":
             st.warning(f"No se encontró precipitación total (*tp_sfc*, incluido msg597) para el ciclo {ciclo}.")
