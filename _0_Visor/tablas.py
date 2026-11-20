@@ -889,8 +889,7 @@ def mostrar_tablas() -> None:
         )
     else:
         resumen_agregacion = "La tabla muestra los valores máximos por área."
-    st.caption(resumen_agregacion)
-    st.caption(f"Variable: {variable} · unidades {unidad} · archivo {ruta.name}")
+    st.caption(f"{resumen_agregacion} · Variable: {variable} · unidades {unidad} · archivo {ruta.name}")
     filas_area = list(evento_area.selection.rows)
     if filas_area:
         indice_area = filas_area[0]

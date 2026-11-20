@@ -376,7 +376,6 @@ with col_cerrar:
         st.session_state.pop("usuario", None)
         st.rerun()
 
-st.divider()
 if pestana_actual == "Descarga":
     mostrar_descarga()
 elif pestana_actual == "Tablas":
