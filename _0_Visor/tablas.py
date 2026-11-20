@@ -796,10 +796,6 @@ def mostrar_tablas() -> None:
     ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas = _controles_tablas(ciclos)
     tipo_variable = VARIABLES[variable]
     ruta = ruta_variable(ciclo, tipo_variable)
-    st.caption("Cada columna muestra DD_MM_HHZ inicial / DD_MM_HHZ final en UTC, según el cierre seleccionado.")
-    if tipo_variable == "gh_iso0":
-        st.caption("Con el modo especial desactivado se calcula mínimo / máximo con las horas disponibles del período.")
-
     if ruta is None:
         if tipo_variable == "tp":
             st.warning(f"No se encontró precipitación total (*tp_sfc*, incluido msg597) para el ciclo {ciclo}.")
@@ -834,8 +830,6 @@ def mostrar_tablas() -> None:
         fecha: _etiqueta_periodo(fecha, cierre, minimo_disponible, maximo_disponible)
         for fecha in fechas
     }
-    if any(etiqueta.endswith("*") for etiqueta in fechas_columna.values()):
-        st.caption("* Período incompleto: se muestran los datos disponibles dentro del rango indicado.")
     areas = list(dict.fromkeys(area for area, _, _, _ in puntos))
     resumen = []
     detalle_por_area = {}
@@ -877,16 +871,6 @@ def mostrar_tablas() -> None:
         resumen.append(fila_area)
         detalle_por_area[area] = detalle
 
-    titulo_tabla = {"gh_iso0": "Isoterma 0 por área", "cape": "CAPE máximo por área",
-                    "tmax": "Temperatura máxima por área", "tmin": "Temperatura mínima por área",
-                    "gh_ceiling": "Base de nubes mínima por área", "vis": "Visibilidad mínima por área"}.get(
-                        tipo_variable, "Máximo por área")
-    st.subheader(f"{titulo_tabla} · selecciona una fila para ver los puntos")
-    if tipo_variable == "gh_iso0":
-        st.caption(
-            "Formato especial: valores 12Z del día / 00Z del día siguiente."
-            if formato_especial else "Cada celda muestra el mínimo / máximo del período diario."
-        )
     evento_area = st.dataframe(
         _tabla_con_colores(resumen, tipo_variable, config_colores,
                            escala=3.280839895 if tipo_variable == "gh_ceiling" and unidad == "m" else 1),
@@ -896,6 +880,17 @@ def mostrar_tablas() -> None:
         selection_mode="single-row",
         key=f"tabla_areas_{ciclo}_{tipo_variable}",
     )
+    if tipo_variable in {"tmin", "gh_ceiling", "vis"}:
+        resumen_agregacion = "La tabla muestra los valores mínimos por área."
+    elif tipo_variable == "gh_iso0":
+        resumen_agregacion = (
+            "Modo especial: máximos a las 12Z del día / 00Z del día siguiente."
+            if formato_especial else "Mínimo / máximo del período diario, usando las horas disponibles."
+        )
+    else:
+        resumen_agregacion = "La tabla muestra los valores máximos por área."
+    st.caption(resumen_agregacion)
+    st.caption(f"Variable: {variable} · unidades {unidad} · archivo {ruta.name}")
     filas_area = list(evento_area.selection.rows)
     if filas_area:
         indice_area = filas_area[0]
@@ -944,4 +939,3 @@ def mostrar_tablas() -> None:
     if datos["errores"]:
         avisos = [f"{fechas_columna[fecha]}: {error}" for fecha, error in datos["errores"].items()]
         st.warning("No se pudo calcular el período completo para: " + "; ".join(avisos))
-    st.caption(f"Variable: {variable} · unidades {unidad} · archivo {ruta.name}")
