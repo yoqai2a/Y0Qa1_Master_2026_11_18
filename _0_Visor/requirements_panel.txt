@@ -3,4 +3,3 @@ requests
 openpyxl
 netCDF4
 pandas
-reportlab>=4.2
