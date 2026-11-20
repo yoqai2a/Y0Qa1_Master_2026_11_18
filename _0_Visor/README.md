@@ -1,40 +1,11 @@
 # Visor Y0Qa1
 
-El lanzador recomendado es `YoQa1_Visor.py` en la raíz. También se conserva `Y0Qa1_Panel.py` como entrada compatible. Para instalar dependencias y abrir el visor desde PowerShell:
+La configuración de usuarios y permisos se carga desde el repositorio privado. Consulta el README de la raíz para definir `AUTH_GITHUB_REPO`, `AUTH_GITHUB_FILE`, `AUTH_GITHUB_BRANCH` y `AUTH_GITHUB_TOKEN` en los secretos del entorno. No guardes `accounts.json` ni tokens en este repositorio público.
 
-```powershell
-python -m pip install -r _0_Visor/requirements_panel.txt
-python YoQa1_Visor.py
-```
+Las pestañas Tablas, UV, Corte temporal, Plan y Descarga se muestran según los permisos que devuelva el archivo de cuentas privado. Tablas lee los NetCDF locales bajo `___Data/___NC` o, en Streamlit Cloud, el archivo comprimido `___Data/___Historico/YYYYMMDD_CCZ.csv.gz` guardado por el workflow para cada ciclo.
 
-## Cuentas iniciales
+En Tablas, **Guardar histórico del ciclo** genera `___Data/___Historico/YYYYMMDD_CCZ.csv.gz` con todas las horas del ciclo para cada punto y las ocho variables seleccionadas: racha, precipitación, isoterma 0, CAPE, temperatura máxima y mínima, base de nubes y visibilidad. Incluye área, punto, coordenadas, hora UTC, valor, unidad y archivo NetCDF de origen. La racha se guarda en km/h; temperaturas en °C; base de nubes en ft; visibilidad en m; precipitación en mm; CAPE en J/kg; e isoterma 0 en m, sin la aproximación visual a centenas. Si se vuelve a guardar el mismo ciclo, se reemplaza su archivo con los datos actuales. GitHub Actions crea y publica automáticamente este histórico después de convertir un ciclo.
 
-El archivo `accounts.json` contiene las cuentas y sus permisos por pestaña. Todas empiezan con la clave provisoria `2026`; el visor obliga a cambiarla por una de al menos 8 caracteres antes de mostrar las pestañas. Las claves se guardan como hashes con sal, no en texto plano.
+La pestaña Tablas permite descargar un PDF imprimible con los resúmenes por área de precipitación, CAPE, racha de viento e isoterma 0, usando el ciclo seleccionado y el mismo cierre UTC para las cuatro. El cierre global predeterminado es 12Z; también se puede cambiar y guardar desde las opciones de Tablas.
 
-| Usuario | Pestañas |
-|---|---|
-| AAAAA | Descarga |
-| BBBBB | Descarga, Tablas, UV |
-| CCCCC | Descarga, Tablas, UV, Plan |
-| DDDDD | Descarga, Tablas, UV, Corte temporal |
-| EEEEE | Descarga, Tablas, UV, Corte temporal, Plan |
-
-## Crear otra cuenta
-
-Ejecuta desde PowerShell:
-
-```powershell
-python _0_Visor/crear_usuario.py
-```
-
-La utilidad pide nombre, clave provisoria y permisos. Siempre otorga `Descarga` y marca la clave para cambiarla en el primer ingreso. Conserva `accounts.json` junto al visor al copiarlo o publicarlo.
-
-## GitHub Actions
-
-Sin `GITHUB_TOKEN` y `GITHUB_REPO`, la pestaña Descarga abre en modo demostración y no inicia descargas. Para activar las descargas, define esas variables (por ejemplo en Streamlit Secrets o el entorno local). El token debe poder ejecutar Actions y leer Contents para consultar `___Data/control.xlsx`. Variables opcionales: `GITHUB_WORKFLOW`, `GITHUB_REF`, `GITHUB_CONTROL_PATH`.
-
-La pestaña Tablas lee los NetCDF locales y las coordenadas agrupadas por área en `Puntos.json`. Permite consultar rachas (`gust`), precipitación total (`tp`, prefiere `msg597` y usa `tp_sfc` si cambia el número de mensaje) e isoterma 0 (`gh_iso0`, prefiere `msg416`). Resume por fecha y área, sin decimales. Selecciona una fila del resumen para ver los puntos del área y selecciona un punto para ver toda la serie de pronóstico, sin elegir un día. Para isoterma 0, el formato normal muestra mínimo / máximo del día; el control Formato especial muestra 12Z / 00Z del día siguiente. El día operativo empieza a las 04Z y termina al cierre elegido. El cierre global se guarda en `_0_Visor/cierres_tablas.json` y el botón Guardar cierre está en la fila de configuración, junto al menú desplegable Leyendas. Las rachas se convierten a km/h, kt o m/s (km/h por defecto). La paleta de viento se define en km/h y sus umbrales y leyenda cambian a la unidad elegida. La precipitación acumulada desde el inicio del ciclo se diferencia para obtener el total diario en mm. Los rangos cromáticos editables están en `rangos_viento.json` y `rangos_precipitacion.json`; el archivo de precipitación define paletas específicas por área y las áreas sin paleta (gris claro con letras negras). La isoterma no usa paleta. Requiere `netCDF4` (incluido en `requirements_panel.txt`).
-
-En Tablas, **Guardar histórico del ciclo** genera `___Data/___Historico/YYYYMMDD_CCZ.csv` con todas las horas del ciclo para cada punto y las tres variables disponibles. Incluye área, punto, coordenadas, hora UTC, valor, unidad y archivo NetCDF de origen. La racha se guarda en km/h, la precipitación en mm y la isoterma 0 en m, sin la aproximación visual a centenas. Si se vuelve a guardar el mismo ciclo, se reemplaza su CSV con los datos actuales.
-
-Las pestañas UV, Corte temporal y Plan quedan visibles según permisos; por ahora muestran un espacio preparado para incorporar su contenido.
+Las columnas diarias muestran `DD_MM_HHZ / DD_MM_HHZ` en UTC. La hora inicial es la hora posterior al cierre seleccionado: por ejemplo, cierre 12Z usa 13Z–12Z del día siguiente; cierre 03Z usa 04Z–03Z; cierre 00Z usa 01Z–00Z. La isoterma 0 puede mostrar el mínimo/máximo del período diario o, al activar el formato especial, los valores de 12Z y 00Z. CAPE usa rangos en J/kg; temperatura usa los límites y colores de `rangos_temperatura.json`. Base de nubes y visibilidad comparten los colores y umbrales equivalentes: en base de nubes los umbrales se expresan en ft y la unidad predeterminada es ft; visibilidad se expresa en m.
