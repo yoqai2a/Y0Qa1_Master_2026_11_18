@@ -405,9 +405,29 @@ def _periodo_diario(fecha: str, cierre: str) -> tuple[datetime, datetime]:
     return inicio, fin
 
 
-def _etiqueta_periodo(fecha: str, cierre: str) -> str:
+@st.cache_data(show_spinner=False)
+def limites_temporales(ruta: str, mtime: float) -> tuple[datetime, datetime] | None:
+    if _es_historico(ruta):
+        datos = _leer_historico(ruta, mtime)
+        if datos.empty:
+            return None
+        return datos["FechaHoraUTC"].min().to_pydatetime(), datos["FechaHoraUTC"].max().to_pydatetime()
+    del mtime
+    with Dataset(ruta, "r") as ds:
+        base = _inicio_ciclo(ds)
+        leads = np.asarray(ds.variables["forecast_hour"][:], dtype=float)
+        if not leads.size:
+            return None
+        validas = [base + timedelta(hours=float(lead)) for lead in leads]
+    return min(validas), max(validas)
+
+
+def _etiqueta_periodo(fecha: str, cierre: str, minimo: datetime, maximo: datetime) -> str:
     inicio, fin = _periodo_diario(fecha, cierre)
-    return f"{inicio:%d_%m_%H}Z / {fin:%d_%m_%H}Z"
+    inicio_mostrado = max(inicio, minimo)
+    incompleto = minimo > inicio or maximo < fin
+    marca = "*" if incompleto else ""
+    return f"{inicio_mostrado:%d_%m_%H}Z / {fin:%d_%m_%H}Z{marca}"
 
 
 def _es_historico(ruta: str | Path) -> bool:
@@ -426,26 +446,17 @@ def _leer_historico(ruta: str, mtime: float) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def fechas_disponibles(ruta: str, mtime: float, cierre: str = "03",
-                       permitir_inicio_incompleto: bool = False) -> list[str]:
-    if _es_historico(ruta):
-        datos = _leer_historico(ruta, mtime)
-        validas = datos["FechaHoraUTC"].sort_values().tolist()
-    else:
-        del mtime  # el valor también forma parte de la clave de caché
-        with Dataset(ruta, "r") as ds:
-            base = _inicio_ciclo(ds)
-            leads = np.asarray(ds.variables["forecast_hour"][:], dtype=float)
-            validas = [base + timedelta(hours=float(lead)) for lead in leads]
-    if not validas:
+def fechas_disponibles(ruta: str, mtime: float, cierre: str = "03") -> list[str]:
+    limites = limites_temporales(ruta, mtime)
+    if limites is None:
         return []
-    minimo, maximo = min(validas), max(validas)
-    dia, ultimo = minimo.date(), maximo.date()
+    minimo, maximo = limites
+    dia, ultimo = minimo.date() - timedelta(days=1), maximo.date()
     fechas = []
     while dia <= ultimo:
         fecha = dia.strftime("%Y%m%d")
         comienzo, fin = _periodo_diario(fecha, cierre)
-        if (permitir_inicio_incompleto or minimo <= comienzo) and fin <= maximo:
+        if comienzo <= maximo and fin >= minimo:
             fechas.append(fecha)
         dia += timedelta(days=1)
     return fechas
@@ -496,12 +507,6 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
 
         for fecha in fechas:
             comienzo, fin = _periodo_diario(fecha, cierre)
-            if min(validas) > comienzo and tipo_variable != "gh_iso0":
-                errores[fecha] = f"el ciclo no llega a la hora inicial {comienzo:%HZ}"
-                continue
-            if max(validas) < fin:
-                errores[fecha] = f"el ciclo no llega al cierre {fin:%Y-%m-%d %HZ}"
-                continue
 
             if tipo_variable == "gust":
                 indices = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
@@ -518,14 +523,16 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
                     else:
                         resultados[fecha].setdefault(area, {})[punto] = None
             elif tipo_variable == "tp":
-                # tp está acumulada desde el inicio del ciclo (kg m-2 = mm).
-                # Se resta el acumulado previo a la hora inicial del período.
+                # tp es acumulada desde el inicio del ciclo (kg m-2 = mm).
+                # En períodos parciales, usa el primer valor disponible como base
+                # y el último disponible hasta el cierre como valor final.
                 indices_base = [i for i, hora in enumerate(validas) if hora <= comienzo]
-                indices_fin = [i for i, hora in enumerate(validas) if hora == fin]
-                if not indices_base or not indices_fin:
-                    errores[fecha] = "el NetCDF no tiene los horarios necesarios para el acumulado diario"
+                indices_periodo = [i for i, hora in enumerate(validas) if comienzo <= hora <= fin]
+                if not indices_periodo:
+                    errores[fecha] = "no hay horas disponibles dentro del período"
                     continue
-                i_base, i_fin = indices_base[-1], indices_fin[-1]
+                i_base = indices_base[-1] if indices_base else indices_periodo[0]
+                i_fin = indices_periodo[-1]
                 for area, punto, iy, ix in puntos_indices:
                     valores = np.ma.asarray(variable[[i_base, i_fin], iy, ix], dtype=float).filled(np.nan)
                     if np.isfinite(valores).all():
@@ -595,13 +602,6 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
     for fecha in fechas:
         comienzo_dt, fin_dt = _periodo_diario(fecha, cierre)
         comienzo, fin = pd.Timestamp(comienzo_dt), pd.Timestamp(fin_dt)
-        if horas.min() > comienzo and tipo_variable != "gh_iso0":
-            errores[fecha] = f"el ciclo no llega a la hora inicial {comienzo:%HZ}"
-            continue
-        if horas.max() < fin:
-            errores[fecha] = f"el ciclo no llega al cierre {fin:%Y-%m-%d %HZ}"
-            continue
-
         if tipo_variable == "gh_iso0" and formato_especial:
             objetivos = (pd.Timestamp(_fecha_hora(fecha, "12")),
                          pd.Timestamp(_fecha_hora(fecha, "00") + timedelta(days=1)))
@@ -609,8 +609,8 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
                 errores[fecha] = "no están disponibles ambas horas del formato especial 12Z / 00Z"
                 continue
         elif tipo_variable == "tp":
-            if not (horas == fin).any() or not (horas <= comienzo).any():
-                errores[fecha] = "el histórico no tiene los horarios necesarios para el acumulado diario"
+            if not ((horas >= comienzo) & (horas <= fin)).any():
+                errores[fecha] = "no hay horas disponibles dentro del período"
                 continue
 
         periodo = datos[(horas >= comienzo) & (horas <= fin)]
@@ -620,10 +620,14 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
                 valores = periodo.loc[(periodo["Área"] == area) & (periodo["Punto"] == punto), "Valor"]
                 valor = float(valores.max()) * factor_viento if not valores.empty else None
             elif tipo_variable == "tp":
+                valores_periodo = serie_punto[(serie_punto["FechaHoraUTC"] >= comienzo)
+                                              & (serie_punto["FechaHoraUTC"] <= fin)]
                 punto_base = serie_punto[serie_punto["FechaHoraUTC"] <= comienzo]
-                punto_fin = serie_punto[serie_punto["FechaHoraUTC"] == fin]
-                valor = (max(0.0, float(punto_fin.iloc[-1]["Valor"]) - float(punto_base.iloc[-1]["Valor"]))
-                         if not punto_base.empty and not punto_fin.empty else None)
+                if not valores_periodo.empty:
+                    base = punto_base.iloc[-1]["Valor"] if not punto_base.empty else valores_periodo.iloc[0]["Valor"]
+                    valor = max(0.0, float(valores_periodo.iloc[-1]["Valor"]) - float(base))
+                else:
+                    valor = None
             elif tipo_variable == "gh_iso0" and formato_especial:
                 par = []
                 for objetivo in objetivos:
@@ -719,16 +723,19 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
     if "tablas_cierre" not in st.session_state:
         st.session_state["tablas_cierre"] = cargar_cierre_global()
 
-    col_ciclo, col_cierre, col_variable, col_unidad, col_formato, col_guardar, col_leyenda = st.columns(
-        [2, 1, 2.2, 1, 1.35, 1.25, 1]
+    col_ciclo, col_cierre, col_variable, col_unidad, col_formato, col_guardar, col_guardar_historico, col_leyenda = st.columns(
+        [1.8, 0.9, 2, 0.8, 1.25, 1.1, 1.2, 0.8]
     )
     with col_ciclo:
-        ciclo = st.selectbox("Ciclo", opciones_ciclo, format_func=lambda v: ciclo_labels[v], key="tablas_ciclo")
+        ciclo = st.selectbox("Ciclo", opciones_ciclo, format_func=lambda v: ciclo_labels[v],
+                             key="tablas_ciclo", label_visibility="collapsed")
     with col_cierre:
         cierre = st.selectbox("Cierre UTC", HORAS_CIERRE,
-                              format_func=lambda v: f"{v}Z", key="tablas_cierre")
+                              format_func=lambda v: f"{v}Z", key="tablas_cierre",
+                              label_visibility="collapsed")
     with col_variable:
-        variable = st.selectbox("Variable", tuple(VARIABLES), key="tablas_variable")
+        variable = st.selectbox("Variable", tuple(VARIABLES), key="tablas_variable",
+                                label_visibility="collapsed")
     tipo_variable = VARIABLES[variable]
     opciones_unidad = (UNIDADES_VIENTO if tipo_variable == "gust" else ("mm",) if tipo_variable == "tp"
                        else ("m", "ft") if tipo_variable == "gh_ceiling" else ("m",) if tipo_variable == "gh_iso0"
@@ -739,7 +746,7 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
         st.session_state[key_unidad] = ("km/h" if tipo_variable == "gust" else "mm" if tipo_variable == "tp"
                                         else "ft" if tipo_variable == "gh_ceiling" else opciones_unidad[0])
     with col_unidad:
-        unidad = st.selectbox("Unidad", opciones_unidad, key=key_unidad)
+        unidad = st.selectbox("Unidad", opciones_unidad, key=key_unidad, label_visibility="collapsed")
     with col_formato:
         if tipo_variable == "gh_iso0":
             formato_especial = st.toggle(
@@ -755,13 +762,26 @@ def _controles_tablas(ciclos: list[tuple[str, Path]]) -> tuple[str, str, str, st
             aproximar_centenas = False
             st.empty()
     with col_guardar:
-        st.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
         if st.button("Guardar cierre", use_container_width=True):
             try:
                 guardar_cierre_global(cierre)
                 st.success(f"Cierre {cierre}Z guardado.")
             except OSError as exc:
                 st.error(f"No se pudo guardar el cierre: {exc}")
+    with col_guardar_historico:
+        fuente_ciclo = next((ruta for clave, ruta in ciclos if clave == ciclo), None)
+        deshabilitado = fuente_ciclo is None or _es_historico(fuente_ciclo)
+        if st.button("Guardar histórico", use_container_width=True, disabled=deshabilitado,
+                     help="Guarda todas las horas disponibles de las variables seleccionadas para cada punto."):
+            try:
+                with st.spinner("Extrayendo las series temporales del ciclo…"):
+                    archivo, cantidad, faltantes = guardar_historico_ciclo(ciclo, cargar_puntos())
+                st.success(f"Histórico guardado: {archivo} · {cantidad:,} registros.")
+                if faltantes:
+                    st.warning("No se encontraron archivos para: " + ", ".join(faltantes)
+                               + ". Se guardaron las variables disponibles.")
+            except Exception as exc:
+                st.error(f"No se pudo guardar el histórico: {exc}")
     with col_leyenda:
         _mostrar_leyenda(tipo_variable, unidad)
     return ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas
@@ -780,19 +800,6 @@ def mostrar_tablas() -> None:
     if tipo_variable == "gh_iso0":
         st.caption("Con el modo especial desactivado se calcula mínimo / máximo con las horas disponibles del período.")
 
-    if ruta is not None and not _es_historico(ruta) and st.button(
-        "Guardar histórico del ciclo",
-        help="Guarda todas las horas disponibles de las variables seleccionadas para cada punto.",
-    ):
-        try:
-            with st.spinner("Extrayendo las series temporales del ciclo…"):
-                archivo, cantidad, faltantes = guardar_historico_ciclo(ciclo, cargar_puntos())
-            st.success(f"Histórico guardado: {archivo} · {cantidad:,} registros.")
-            if faltantes:
-                st.warning("No se encontraron archivos para: " + ", ".join(faltantes) + ". Se guardaron las variables disponibles.")
-        except Exception as exc:
-            st.error(f"No se pudo guardar el histórico: {exc}")
-
     if ruta is None:
         if tipo_variable == "tp":
             st.warning(f"No se encontró precipitación total (*tp_sfc*, incluido msg597) para el ciclo {ciclo}.")
@@ -802,13 +809,14 @@ def mostrar_tablas() -> None:
 
     mtime = ruta.stat().st_mtime
     try:
-        fechas = tuple(fechas_disponibles(
-            str(ruta), mtime, cierre=cierre,
-            permitir_inicio_incompleto=(tipo_variable == "gh_iso0")
-        ))
+        limites = limites_temporales(str(ruta), mtime)
+        fechas = tuple(fechas_disponibles(str(ruta), mtime, cierre=cierre))
         if not fechas:
             inicio_periodo, fin_periodo = _periodo_diario("20000101", cierre)
-            st.info(f"Este ciclo no cubre el período {inicio_periodo:%HZ} a {fin_periodo:%HZ} del día siguiente.")
+            st.info(f"Este ciclo no contiene horas entre {inicio_periodo:%HZ} y {fin_periodo:%HZ} del día siguiente.")
+            return
+        if limites is None:
+            st.info("El archivo no contiene horas válidas.")
             return
         puntos = tuple((p["area"], p["punto"], p["lat"], p["lon"]) for p in cargar_puntos())
         datos = calcular_maximos(
@@ -821,7 +829,13 @@ def mostrar_tablas() -> None:
         st.error(f"No se pudieron leer los datos: {exc}")
         return
 
-    fechas_columna = {fecha: _etiqueta_periodo(fecha, cierre) for fecha in fechas}
+    minimo_disponible, maximo_disponible = limites
+    fechas_columna = {
+        fecha: _etiqueta_periodo(fecha, cierre, minimo_disponible, maximo_disponible)
+        for fecha in fechas
+    }
+    if any(etiqueta.endswith("*") for etiqueta in fechas_columna.values()):
+        st.caption("* Período incompleto: se muestran los datos disponibles dentro del rango indicado.")
     areas = list(dict.fromkeys(area for area, _, _, _ in puntos))
     resumen = []
     detalle_por_area = {}
