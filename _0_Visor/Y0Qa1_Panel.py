@@ -3,8 +3,7 @@
 Uso desde la raíz del proyecto: pip install -r _0_Visor/requirements_panel.txt;
 python Y0Qa1_Panel.py
 Secrets/variables: GITHUB_TOKEN, GITHUB_REPO y opcionales GITHUB_WORKFLOW,
-GITHUB_REF, GITHUB_CONTROL_PATH. Las cuentas viven en el repo privado indicado
-por AUTH_GITHUB_REPO y se leen usando AUTH_GITHUB_TOKEN.
+GITHUB_REF, GITHUB_CONTROL_PATH. Las cuentas se configuran en accounts.json.
 """
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ import base64
 import io
 import os
 import time
-import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -92,81 +90,25 @@ def rama():
     return respuesta.json()["default_branch"]
 
 
-MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio",
-            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
-
-
-def fecha_control(valor):
-    texto = str(valor or "").strip()
-    if re.fullmatch(r"\d{8}", texto):
-        return texto
-    m = re.fullmatch(r"(\d{1,2})\.([a-záéíóú]+)\.(\d{4})", texto, re.I)
-    if not m:
-        return ""
-    try:
-        mes = MESES_ES.index(m.group(2).casefold()) + 1
-        return datetime(int(m.group(3)), mes, int(m.group(1))).strftime("%Y%m%d")
-    except ValueError:
-        return ""
-
-
-def filas_control():
-    """Devuelve el control como filas matriciales, conservando lectura del formato anterior."""
-    try:
-        if DEMO:
-            ruta_local = Path(__file__).resolve().parent.parent / "___Data" / "control.xlsx"
-            if not ruta_local.is_file():
-                return []
-            contenido = ruta_local.read_bytes()
-        else:
-            respuesta = gh("GET", f"/repos/{REPO}/contents/{CONTROL_PATH}", params={"ref": rama()})
-            if respuesta.status_code == 404:
-                return []
-            if respuesta.status_code != 200:
-                raise RuntimeError(explica(respuesta))
-            contenido = base64.b64decode(respuesta.json().get("content", ""))
-        libro = load_workbook(io.BytesIO(contenido), read_only=True, data_only=True)
-        try:
-            filas = list(libro.active.iter_rows(values_only=True))
-        finally:
-            libro.close()
-        if not filas:
-            return []
-        encabezados = [str(v or "").strip().casefold() for v in filas[0]]
-        ciclos = ("00", "06", "12", "18")
-        if all(c in encabezados for c in ciclos):
-            salida = []
-            for fila in filas[1:]:
-                fecha = fecha_control(fila[0] if fila else "")
-                if not fecha:
-                    continue
-                salida.append({"fecha_key": fecha, "fecha": str(fila[0]), **{
-                    c: str(fila[encabezados.index(c)] or "").strip() if encabezados.index(c) < len(fila) else ""
-                    for c in ciclos
-                }})
-            return sorted(salida, key=lambda f: f["fecha_key"], reverse=True)
-        # Compatibilidad con control antiguo: fecha | ciclo | existe o no.
-        salida = {}
-        for fila in filas[1:]:
-            if len(fila) < 3:
-                continue
-            fecha, ciclo = fecha_control(fila[0]), str(fila[1] or "").zfill(2)
-            if fecha and ciclo in ciclos:
-                registro = salida.setdefault(fecha, {"fecha_key": fecha, "fecha": fecha})
-                registro[ciclo] = str(fila[2] or "")
-        return sorted(salida.values(), key=lambda f: f["fecha_key"], reverse=True)
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"No se pudo leer {CONTROL_PATH}: {exc}") from exc
-
-
 def ciclo_descargado(fecha, ciclo):
     """Consulta control.xlsx en el repositorio de GitHub."""
-    for fila in filas_control():
-        if fila["fecha_key"] == fecha:
-            return str(fila.get(ciclo, "")).strip().casefold() in {"sí", "si", "true", "yes", "1"}
-    return False
+    respuesta = gh("GET", f"/repos/{REPO}/contents/{CONTROL_PATH}", params={"ref": rama()})
+    if respuesta.status_code == 404:
+        return False
+    if respuesta.status_code != 200:
+        raise RuntimeError(explica(respuesta))
+    try:
+        contenido = base64.b64decode(respuesta.json().get("content", ""))
+        libro = load_workbook(io.BytesIO(contenido), read_only=True, data_only=True)
+        try:
+            for f, c, estado in libro.active.iter_rows(min_row=2, values_only=True):
+                if str(f or "") == fecha and str(c or "").zfill(2) == ciclo:
+                    return str(estado or "").strip().casefold() in {"sí", "si", "true", "yes", "1"}
+            return False
+        finally:
+            libro.close()
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo leer {CONTROL_PATH}: {exc}") from exc
 
 
 def dispara(inputs):
@@ -348,19 +290,6 @@ def mostrar_descarga():
         except RuntimeError as exc:
             st.error(str(exc))
 
-    st.divider()
-    st.subheader("Control de ciclos · últimos 3 días")
-    try:
-        control = filas_control()[:3]
-        if control:
-            st.dataframe([{k: fila.get(k, "") for k in ("fecha", "00", "06", "12", "18")}
-                          for fila in control], hide_index=True, use_container_width=True,
-                         column_config={c: st.column_config.TextColumn(c) for c in ("00", "06", "12", "18")})
-        else:
-            st.caption("Todavía no hay ciclos registrados en control.xlsx.")
-    except RuntimeError as exc:
-        st.warning(str(exc))
-
 nombres_visibles = [nombre for nombre in ORDEN_PESTANAS if nombre in cuenta_actual.get("tabs", [])]
 col_menu, col_usuario, col_cerrar = st.columns([5, 1.7, 1.3], vertical_alignment="bottom")
 with col_menu:
@@ -376,6 +305,7 @@ with col_cerrar:
         st.session_state.pop("usuario", None)
         st.rerun()
 
+st.divider()
 if pestana_actual == "Descarga":
     mostrar_descarga()
 elif pestana_actual == "Tablas":
