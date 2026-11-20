@@ -398,10 +398,16 @@ def _fecha_hora(fecha: str, hora: str) -> datetime:
     return datetime.strptime(fecha, "%Y%m%d") + timedelta(hours=int(hora))
 
 
-def _etiqueta_periodo(fecha: str, cierre: str) -> str:
-    inicio = _fecha_hora(fecha, "04")
+def _periodo_diario(fecha: str, cierre: str) -> tuple[datetime, datetime]:
+    hora_inicio = (int(cierre) + 1) % 24
+    inicio = _fecha_hora(fecha, f"{hora_inicio:02d}")
     fin = _fecha_hora(fecha, cierre) + timedelta(days=1)
-    return f"{inicio:%d%m}_{inicio:%H} / {fin:%d%m}_{fin:%H}"
+    return inicio, fin
+
+
+def _etiqueta_periodo(fecha: str, cierre: str) -> str:
+    inicio, fin = _periodo_diario(fecha, cierre)
+    return f"{inicio:%d_%m_%H}Z / {fin:%d_%m_%H}Z"
 
 
 def _es_historico(ruta: str | Path) -> bool:
@@ -420,7 +426,8 @@ def _leer_historico(ruta: str, mtime: float) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def fechas_disponibles(ruta: str, mtime: float, permitir_inicio_incompleto: bool = False) -> list[str]:
+def fechas_disponibles(ruta: str, mtime: float, cierre: str = "03",
+                       permitir_inicio_incompleto: bool = False) -> list[str]:
     if _es_historico(ruta):
         datos = _leer_historico(ruta, mtime)
         validas = datos["FechaHoraUTC"].sort_values().tolist()
@@ -437,9 +444,8 @@ def fechas_disponibles(ruta: str, mtime: float, permitir_inicio_incompleto: bool
     fechas = []
     while dia <= ultimo:
         fecha = dia.strftime("%Y%m%d")
-        comienzo = _fecha_hora(fecha, "04")
-        cierre_default = _fecha_hora(fecha, "03") + timedelta(days=1)
-        if (permitir_inicio_incompleto or minimo <= comienzo) and cierre_default <= maximo:
+        comienzo, fin = _periodo_diario(fecha, cierre)
+        if (permitir_inicio_incompleto or minimo <= comienzo) and fin <= maximo:
             fechas.append(fecha)
         dia += timedelta(days=1)
     return fechas
@@ -489,10 +495,9 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
             puntos_indices.append((area, punto, iy, ix))
 
         for fecha in fechas:
-            comienzo = _fecha_hora(fecha, "04")
-            fin = _fecha_hora(fecha, cierre) + timedelta(days=1)
+            comienzo, fin = _periodo_diario(fecha, cierre)
             if min(validas) > comienzo and tipo_variable != "gh_iso0":
-                errores[fecha] = "el ciclo no llega a la hora inicial 04Z"
+                errores[fecha] = f"el ciclo no llega a la hora inicial {comienzo:%HZ}"
                 continue
             if max(validas) < fin:
                 errores[fecha] = f"el ciclo no llega al cierre {fin:%Y-%m-%d %HZ}"
@@ -514,7 +519,7 @@ def calcular_maximos(ruta: str, mtime: float, fechas: tuple[str, ...], cierre: s
                         resultados[fecha].setdefault(area, {})[punto] = None
             elif tipo_variable == "tp":
                 # tp está acumulada desde el inicio del ciclo (kg m-2 = mm).
-                # Se resta el acumulado previo a 04Z para obtener el total diario.
+                # Se resta el acumulado previo a la hora inicial del período.
                 indices_base = [i for i, hora in enumerate(validas) if hora <= comienzo]
                 indices_fin = [i for i, hora in enumerate(validas) if hora == fin]
                 if not indices_base or not indices_fin:
@@ -588,10 +593,10 @@ def _calcular_maximos_historico(ruta: str, mtime: float, fechas: tuple[str, ...]
     errores = {}
 
     for fecha in fechas:
-        comienzo = pd.Timestamp(_fecha_hora(fecha, "04"))
-        fin = pd.Timestamp(_fecha_hora(fecha, cierre) + timedelta(days=1))
+        comienzo_dt, fin_dt = _periodo_diario(fecha, cierre)
+        comienzo, fin = pd.Timestamp(comienzo_dt), pd.Timestamp(fin_dt)
         if horas.min() > comienzo and tipo_variable != "gh_iso0":
-            errores[fecha] = "el ciclo no llega a la hora inicial 04Z"
+            errores[fecha] = f"el ciclo no llega a la hora inicial {comienzo:%HZ}"
             continue
         if horas.max() < fin:
             errores[fecha] = f"el ciclo no llega al cierre {fin:%Y-%m-%d %HZ}"
@@ -771,7 +776,7 @@ def mostrar_tablas() -> None:
     ciclo, cierre, variable, unidad, formato_especial, aproximar_centenas = _controles_tablas(ciclos)
     tipo_variable = VARIABLES[variable]
     ruta = ruta_variable(ciclo, tipo_variable)
-    st.caption("Cada columna muestra el período DDMM_HHinicial / DDMM_HHfinal en UTC.")
+    st.caption("Cada columna muestra DD_MM_HHZ inicial / DD_MM_HHZ final en UTC, según el cierre seleccionado.")
     if tipo_variable == "gh_iso0":
         st.caption("Con el modo especial desactivado se calcula mínimo / máximo con las horas disponibles del período.")
 
@@ -798,10 +803,12 @@ def mostrar_tablas() -> None:
     mtime = ruta.stat().st_mtime
     try:
         fechas = tuple(fechas_disponibles(
-            str(ruta), mtime, permitir_inicio_incompleto=(tipo_variable == "gh_iso0")
+            str(ruta), mtime, cierre=cierre,
+            permitir_inicio_incompleto=(tipo_variable == "gh_iso0")
         ))
         if not fechas:
-            st.info("Este ciclo no cubre un día completo desde 04Z hasta 03Z del día siguiente.")
+            inicio_periodo, fin_periodo = _periodo_diario("20000101", cierre)
+            st.info(f"Este ciclo no cubre el período {inicio_periodo:%HZ} a {fin_periodo:%HZ} del día siguiente.")
             return
         puntos = tuple((p["area"], p["punto"], p["lat"], p["lon"]) for p in cargar_puntos())
         datos = calcular_maximos(
