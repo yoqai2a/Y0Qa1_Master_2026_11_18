@@ -459,6 +459,12 @@ elif pestana_actual == "Tablas":
         mostrar_tablas()
     except Exception as exc:
         mostrar_error("No se pudo cargar la pestaña Tablas.", exc)
+elif pestana_actual == "Corte temporal":
+    try:
+        from corte_temporal.interfaz import mostrar_corte_temporal
+        mostrar_corte_temporal()
+    except Exception as exc:
+        mostrar_error("No se pudo cargar la pestaña Corte temporal.", exc)
 else:
     st.title(f"Y0Qa1 · {pestana_actual}")
     st.info(f"La pestaña {pestana_actual} está preparada; su contenido se añadirá después.")

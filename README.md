@@ -55,3 +55,4 @@ Para ciclos descargados antes de esta modificación, vuelve a iniciar ese ciclo 
 - La fecha escrita a mano se valida antes de instalar nada (formato `AAAAMMDD`, fecha real y no futura).
 - Si el job falla se abre un Issue por ciclo (o se comenta en el que ya está abierto).
 - Las acciones están fijadas por SHA de commit; para actualizarlas, cambia el SHA y el comentario con la versión.
+- Pestaña **Corte temporal**: el workflow crea 76 capas NetCDF más por ciclo (temperatura, humedad y viento u, v en 19 niveles; ver `_0_Visor/corte_temporal/configuracion/`) y guarda un respaldo compacto de perfiles en `___Data/___Historico_Corte/`. Por defecto **no** sube esas capas a GitHub (`publicar_nc_en_git` en `almacenamiento.json`), porque harían crecer mucho el repositorio.

@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "description": "Qué se muestra en la pestaña Corte temporal (tiempo x presión). 'capas' describe cada variable guardada (prefijo de la capa NetCDF, conversión a la unidad guardada); 'variables' son los selectores de la pantalla y sus 'vistas' (campo, unidades, paleta y contornos).",
+  "escala_vertical_defecto": "lineal",
+  "capas": {
+    "t": {
+      "nombre": "Temperatura",
+      "unidad": "°C",
+      "factor": 1.0,
+      "desplazamiento": -273.15
+    },
+    "r": {
+      "nombre": "Humedad relativa",
+      "unidad": "%",
+      "factor": 1.0,
+      "desplazamiento": 0.0
+    },
+    "u": {
+      "nombre": "Componente U del viento",
+      "unidad": "m/s",
+      "factor": 1.0,
+      "desplazamiento": 0.0
+    },
+    "v": {
+      "nombre": "Componente V del viento",
+      "unidad": "m/s",
+      "factor": 1.0,
+      "desplazamiento": 0.0
+    }
+  },
+  "variables": {
+    "Humedad relativa": {
+      "vistas": {
+        "Humedad relativa": {
+          "campo": "r",
+          "paleta": "YlGnBu",
+          "extension": "neither",
+          "unidades": {
+            "%": {
+              "factor": 1.0,
+              "desplazamiento": 0.0,
+              "min": 0,
+              "max": 100,
+              "paso": 10
+            }
+          },
+          "contornos_resaltados": [
+            {
+              "valor": 90,
+              "etiqueta": "90 %",
+              "color": "#0B3D91",
+              "ancho": 1.4
+            }
+          ],
+          "barbas": false
+        }
+      }
+    },
+    "Temperatura": {
+      "vistas": {
+        "Temperatura": {
+          "campo": "t",
+          "paleta": "RdYlBu_r",
+          "extension": "both",
+          "unidades": {
+            "°C": {
+              "factor": 1.0,
+              "desplazamiento": 0.0,
+              "min": -80,
+              "max": 30,
+              "paso": 5
+            }
+          },
+          "contornos_resaltados": [
+            {
+              "valor": 0,
+              "etiqueta": "0 °C",
+              "color": "black",
+              "ancho": 2.0
+            }
+          ],
+          "barbas": false,
+          "centro": 0
+        }
+      }
+    },
+    "Viento (u, v)": {
+      "vistas": {
+        "Rapidez y barbas": {
+          "campo": "rapidez",
+          "paleta": "YlOrRd",
+          "extension": "max",
+          "unidades": {
+            "kt": {
+              "factor": 1.94384449244,
+              "desplazamiento": 0.0,
+              "min": 0,
+              "max": 100,
+              "paso": 10
+            },
+            "m/s": {
+              "factor": 1.0,
+              "desplazamiento": 0.0,
+              "min": 0,
+              "max": 50,
+              "paso": 5
+            },
+            "km/h": {
+              "factor": 3.6,
+              "desplazamiento": 0.0,
+              "min": 0,
+              "max": 180,
+              "paso": 20
+            }
+          },
+          "contornos_resaltados": [],
+          "barbas": true
+        },
+        "U (zonal, + hacia el este)": {
+          "campo": "u",
+          "paleta": "RdBu_r",
+          "extension": "both",
+          "unidades": {
+            "kt": {
+              "factor": 1.94384449244,
+              "desplazamiento": 0.0,
+              "min": -100,
+              "max": 100,
+              "paso": 10
+            },
+            "m/s": {
+              "factor": 1.0,
+              "desplazamiento": 0.0,
+              "min": -50,
+              "max": 50,
+              "paso": 5
+            },
+            "km/h": {
+              "factor": 3.6,
+              "desplazamiento": 0.0,
+              "min": -180,
+              "max": 180,
+              "paso": 20
+            }
+          },
+          "contornos_resaltados": [
+            {
+              "valor": 0,
+              "etiqueta": "0",
+              "color": "black",
+              "ancho": 1.4
+            }
+          ],
+          "barbas": false,
+          "centro": 0
+        },
+        "V (meridional, + hacia el norte)": {
+          "campo": "v",
+          "paleta": "RdBu_r",
+          "extension": "both",
+          "unidades": {
+            "kt": {
+              "factor": 1.94384449244,
+              "desplazamiento": 0.0,
+              "min": -100,
+              "max": 100,
+              "paso": 10
+            },
+            "m/s": {
+              "factor": 1.0,
+              "desplazamiento": 0.0,
+              "min": -50,
+              "max": 50,
+              "paso": 5
+            },
+            "km/h": {
+              "factor": 3.6,
+              "desplazamiento": 0.0,
+              "min": -180,
+              "max": 180,
+              "paso": 20
+            }
+          },
+          "contornos_resaltados": [
+            {
+              "valor": 0,
+              "etiqueta": "0",
+              "color": "black",
+              "ancho": 1.4
+            }
+          ],
+          "barbas": false,
+          "centro": 0
+        }
+      }
+    }
+  }
+}

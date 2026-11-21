@@ -56,9 +56,10 @@ def _puntos_desde(ruta: str, mtime_ns: int) -> tuple[Punto, ...]:
     )
 
 
-def cargar_puntos() -> tuple[Punto, ...]:
-    """Puntos de Puntos.json. Se vuelve a leer solo si el archivo cambió."""
-    return _puntos_desde(str(ARCHIVO_PUNTOS), ARCHIVO_PUNTOS.stat().st_mtime_ns)
+def cargar_puntos(ruta: Path | None = None) -> tuple[Punto, ...]:
+    """Puntos de Puntos.json (o de ``ruta``). Se vuelve a leer solo si el archivo cambió."""
+    ruta = ruta or ARCHIVO_PUNTOS
+    return _puntos_desde(str(ruta), ruta.stat().st_mtime_ns)
 
 
 @lru_cache(maxsize=16)
@@ -178,12 +179,48 @@ def _buscar_variable_nc(ds, definicion: VariableMeteo, nombre_archivo: str):
     raise ValueError(f"No se encontró la variable {definicion.clave} dentro de {nombre_archivo}.")
 
 
-def _indices_mas_cercanos(valores: np.ndarray, objetivos: np.ndarray, circular: bool) -> np.ndarray:
-    """Índice del valor más cercano a cada objetivo (en una sola operación vectorizada)."""
+def indices_mas_cercanos(valores: np.ndarray, objetivos: np.ndarray, circular: bool) -> tuple[np.ndarray, np.ndarray]:
+    """Índice de la celda más cercana a cada objetivo y la distancia (en grados) a esa celda."""
     diferencia = valores[None, :] - objetivos[:, None]
     if circular:
         diferencia = ((diferencia + 180) % 360) - 180
-    return np.nanargmin(np.abs(diferencia), axis=1)
+    distancia = np.abs(diferencia)
+    indices = np.nanargmin(distancia, axis=1)
+    return indices, distancia[np.arange(len(objetivos)), indices]
+
+
+def _paso_malla(valores: np.ndarray) -> float:
+    return float(np.median(np.abs(np.diff(valores)))) if len(valores) > 1 else 0.0
+
+
+def puntos_fuera_de_malla(latitudes: np.ndarray, longitudes: np.ndarray,
+                          puntos: Sequence[Punto]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Índices (iy, ix) de la celda más cercana y una máscara con los puntos fuera de la malla.
+
+    Un punto está fuera si la celda más cercana queda a más de una celda de distancia: sin
+    esta comprobación se usaría en silencio la celda del borde, que no representa al punto.
+    """
+    lat = np.array([p.lat for p in puntos], dtype=float)
+    lon = ((np.array([p.lon for p in puntos], dtype=float) + 180) % 360) - 180
+    iy, dlat = indices_mas_cercanos(latitudes, lat, circular=False)
+    ix, dlon = indices_mas_cercanos(longitudes, lon, circular=True)
+    fuera = (dlat > _paso_malla(latitudes)) | (dlon > _paso_malla(longitudes))
+    return iy, ix, fuera
+
+
+_AVISOS_EMITIDOS: set[tuple] = set()
+
+
+def avisar_puntos_fuera(fuera: np.ndarray, puntos: Sequence[Punto], archivo: str) -> None:
+    """Avisa en el registro (una sola vez por conjunto de puntos) de los que están fuera de la malla."""
+    if not fuera.any():
+        return
+    omitidos = tuple(f"{p.area}/{p.punto}" for p, f in zip(puntos, fuera) if f)
+    if omitidos in _AVISOS_EMITIDOS:
+        return
+    _AVISOS_EMITIDOS.add(omitidos)
+    log.warning("AVISO: %d punto(s) quedan fuera de la malla de %s (y de las demás capas del ciclo) y se omiten: %s. "
+                "Revisa el área de descarga (__Configuracion_Fnnn.toml).", len(omitidos), archivo, ", ".join(omitidos))
 
 
 def horas_validas_nc(ruta: Path) -> list[datetime]:
@@ -218,14 +255,14 @@ def extraer_series_nc(ruta: Path, clave: str, puntos: Sequence[Punto]) -> pd.Dat
         variable = _buscar_variable_nc(ds, definicion, ruta.name)
 
         lat_objetivo = np.array([p.lat for p in puntos], dtype=float)
-        lon_objetivo = ((np.array([p.lon for p in puntos], dtype=float) + 180) % 360) - 180
-        iy = _indices_mas_cercanos(latitudes, lat_objetivo, circular=False)
-        ix = _indices_mas_cercanos(longitudes, lon_objetivo, circular=True)
+        iy, ix, fuera = puntos_fuera_de_malla(latitudes, longitudes, puntos)
+        avisar_puntos_fuera(fuera, puntos, ruta.name)
 
         crudo = np.full((len(leads), len(puntos)), np.nan)
         for t in range(len(leads)):
             mapa = np.ma.asarray(variable[t, :, :], dtype=float).filled(np.nan)
             crudo[t, :] = mapa[iy, ix]
+        crudo[:, fuera] = np.nan      # los puntos fuera de la malla no tienen dato
 
     valores = crudo * definicion.factor_nc + definicion.desplazamiento_nc
     horas = pd.DatetimeIndex([base + timedelta(hours=float(h)) for h in leads])

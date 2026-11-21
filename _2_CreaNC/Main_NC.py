@@ -58,6 +58,22 @@ def _parser() -> argparse.ArgumentParser:
     return p
 
 
+def _sumar_seleccion(seleccion: dict[str, bool], ruta: Path) -> dict[str, bool]:
+    """Suma a la selección principal las capas activas de un archivo adicional (mismo formato)."""
+    try:
+        extra = json.loads(ruta.read_text(encoding="utf-8-sig"))["archivos"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ErrorVariables(f"No se pudo leer la selección adicional {ruta}: {exc}") from exc
+    if not isinstance(extra, dict) or any(not isinstance(v, bool) for v in extra.values()):
+        raise ErrorVariables(f"{ruta}: 'archivos' debe ser un objeto con valores true/false.")
+    activas = [nombre for nombre, activo in extra.items() if activo]
+    log.info(f"Selección adicional {ruta.name}: {len(activas)} capa(s) activa(s).")
+    unida = dict(seleccion)
+    for nombre in activas:
+        unida[nombre] = True
+    return unida
+
+
 def _mostrar_inventario(ruta: Path) -> None:
     from .grib import inventario
     print("msg\tshortName\ttipoNivel\tlevel\ttop\tbottom\tstepType\tstepRange\tparametro\tnombre\tunidades")
@@ -90,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ErrorVariables(f"No se pudo leer la selección NetCDF {args.seleccion_nc}: {exc}") from exc
         if not isinstance(seleccion, dict) or any(not isinstance(v, bool) for v in seleccion.values()):
             raise ErrorVariables(f"{args.seleccion_nc}: 'archivos' debe ser un objeto con valores true/false.")
+        for extra in cfg.salida.selecciones_adicionales:
+            seleccion = _sumar_seleccion(seleccion, extra)
         nombres_disponibles = {c.nombre for c in capas}
         desconocidos = sorted(k for k, v in seleccion.items() if v and k not in nombres_disponibles)
         if desconocidos:

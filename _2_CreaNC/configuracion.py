@@ -34,6 +34,8 @@ class Salida:
     grupos: tuple[str, ...]
     conservar_ciclos: int
     agrupacion: str
+    # Archivos extra con el mismo formato que seleccion_nc.json (los activos se suman a la selección).
+    selecciones_adicionales: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,10 @@ def cargar_configuracion(
     if not lista_grupos or not all(isinstance(g, str) and g for g in lista_grupos):
         raise ErrorConfiguracion("[salida] grupos debe ser una lista de textos no vacía")
 
+    extras = _leer(s, "salida", "selecciones_adicionales", list, [])
+    if not all(isinstance(x, str) and x for x in extras):
+        raise ErrorConfiguracion("[salida] selecciones_adicionales debe ser una lista de rutas (texto)")
+
     cfg = Config(
         entrada=Entrada(
             carpeta_fnnn=_ruta(_leer(e, "entrada", "carpeta_fnnn", str), raiz_proyecto),
@@ -117,6 +123,7 @@ def cargar_configuracion(
             grupos=tuple(lista_grupos),
             conservar_ciclos=_leer(s, "salida", "conservar_ciclos", int, 12),
             agrupacion=agrupacion or _leer(s, "salida", "agrupacion", str, "capa"),
+            selecciones_adicionales=tuple(_ruta(x, raiz_proyecto) for x in extras),
         ),
         netcdf=Netcdf(
             compresion=compresion if compresion is not None else _leer(n, "netcdf", "compresion", int, 1),

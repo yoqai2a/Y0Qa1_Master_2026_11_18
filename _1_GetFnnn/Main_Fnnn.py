@@ -1,16 +1,17 @@
-"""Orquestador de la descarga de fNNN de GFS (se inicia desde _1_YoQai.py).
+"""Orquestador de la descarga de fNNN de GFS (se inicia desde _1_Y0Qa1_GetFnnn.py).
 
 Uso (desde la raíz del proyecto):
-    python _1_YoQai.py                           # interactivo: propone el último ciclo
-    python _1_YoQai.py --sin-preguntas           # acepta el último ciclo disponible
-    python _1_YoQai.py --fecha 20261104 --ciclo 12
-    python _1_YoQai.py --conjunto XyGrib --simular
-    python _1_YoQai.py --area SCGU --conjunto XyGrib
-    python _1_YoQai.py --crear-nc                # descarga y convierte; deja solo los .nc
-    python _1_YoQai.py --solo-fnnn               # descarga y conserva los fNNN
+    python _1_Y0Qa1_GetFnnn.py                           # interactivo: propone el último ciclo
+    python _1_Y0Qa1_GetFnnn.py --sin-preguntas           # acepta el último ciclo disponible
+    python _1_Y0Qa1_GetFnnn.py --fecha 20261104 --ciclo 12
+    python _1_Y0Qa1_GetFnnn.py --conjunto XyGrib --simular
+    python _1_Y0Qa1_GetFnnn.py --area SCGU --conjunto XyGrib
+    python _1_Y0Qa1_GetFnnn.py --crear-nc                # descarga y convierte; deja solo los .nc
+    python _1_Y0Qa1_GetFnnn.py --solo-fnnn               # descarga y conserva los fNNN
 """
 from __future__ import annotations
 
+import logging
 import argparse
 import sys
 import time
@@ -19,10 +20,14 @@ from pathlib import Path
 from . import ci
 from .ciclos import elegir_ciclo, horas_pronostico
 from .configuracion import ErrorConfiguracion, cargar_configuracion
+from _Comun.registro import configurar as configurar_logging
+
 from .control import ciclo_creado
 from .descarga import Resultado, descargar_todo, limpiar_antiguos
 from .nomads import construir_urls, crear_sesion, lead_de_nombre
 from .utilidades import ahora_utc, duracion, imprimir_marca, tamano_legible
+
+log = logging.getLogger(__name__)
 
 CARPETA_MODULO = Path(__file__).resolve().parent
 RAIZ_PROYECTO = CARPETA_MODULO.parent
@@ -71,10 +76,10 @@ def _continuar_con_crea_nc(carpeta: Path) -> int:
     try:
         from _2_CreaNC.Main_NC import main as main_nc
     except ImportError as exc:
-        print(f"No se pudo cargar _2_CreaNC: {exc}", file=sys.stderr)
+        log.error(f"No se pudo cargar _2_CreaNC: {exc}")
         ci.anotar("error", f"No se pudo cargar _2_CreaNC: {exc}")
         return 2
-    print("Continuando con _2_CreaNC...", flush=True)
+    log.info("Continuando con _2_CreaNC...")
     codigo = main_nc([str(carpeta)])
     if codigo != 0:
         ci.anotar("error", "La creación de NetCDF falló; los fNNN se conservan")
@@ -82,15 +87,16 @@ def _continuar_con_crea_nc(carpeta: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configurar_logging()
     args = _parser().parse_args(argv)
     inicio_programa = time.perf_counter()
-    print(f"Inicio del programa: {ahora_utc()}", flush=True)
+    log.info(f"Inicio del programa: {ahora_utc()}")
     sesion = None
     try:
         cfg = cargar_configuracion(args.config, RAIZ_PROYECTO, args.conjunto, args.area, args.crear_nc)
         ruta_control = cfg.descarga.carpeta_salida.parent / "control.xlsx"
         if args.fecha and args.ciclo and not args.forzar and ciclo_creado(ruta_control, args.fecha, args.ciclo):
-            print(f"El ciclo {args.fecha} {args.ciclo}Z ya existe en control.xlsx; se omite la descarga.")
+            log.info(f"El ciclo {args.fecha} {args.ciclo}Z ya existe en control.xlsx; se omite la descarga.")
             return 0
         sesion = crear_sesion(cfg.descarga.conexiones)
         # Sin terminal (CI, cron, tubería) input() bloquearía o fallaría.
@@ -100,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         if not args.forzar and ciclo_creado(ruta_control, fecha, ciclo):
-            print(f"El ciclo {fecha} {ciclo}Z ya existe en control.xlsx; se omite la descarga.")
+            log.info(f"El ciclo {fecha} {ciclo}Z ya existe en control.xlsx; se omite la descarga.")
             return 0
 
         raiz_datos = cfg.descarga.carpeta_salida
@@ -110,56 +116,56 @@ def main(argv: list[str] | None = None) -> int:
         leads = horas_pronostico(cfg.modelo, ciclo)
         urls = construir_urls(cfg, fecha, ciclo, leads, publicados)
         if not urls:
-            print("No hay pasos de pronóstico configurados disponibles en NOMADS para ese ciclo.")
+            log.info("No hay pasos de pronóstico configurados disponibles en NOMADS para ese ciclo.")
             ci.anotar("error", f"Sin fNNN disponibles para {fecha} {ciclo}Z")
             return 1
         disponibles = [lead_de_nombre(n) for n, _ in urls]
-        print(f"Descarga: {fecha} {ciclo}Z; f{min(disponibles):03d}–f{max(disponibles):03d}; "
+        log.info(f"Descarga: {fecha} {ciclo}Z; f{min(disponibles):03d}–f{max(disponibles):03d}; "
               f"{len(urls)} archivos disponibles (conjunto {cfg.modelo.conjunto}, "
               f"área {cfg.area.nombre}: N{cfg.area.norte} S{cfg.area.sur} "
               f"O{cfg.area.oeste} E{cfg.area.este})")
-        print(f"Salida: {carpeta}")
-        print("Flujo: descarga -> CREA_NC (al terminar se borran los fNNN)" if cfg.flujo.crear_nc
+        log.info(f"Salida: {carpeta}")
+        log.info("Flujo: descarga -> CREA_NC (al terminar se borran los fNNN)" if cfg.flujo.crear_nc
               else "Flujo: solo descarga (crear_nc = false); CREA_NC NO se ejecutará "
                    "(usa --crear-nc o [flujo] crear_nc = true)")
         if len(urls) < len(leads):
             ci.anotar("warning", f"Ciclo {fecha} {ciclo}Z parcial: {len(urls)}/{len(leads)} fNNN publicados")
         if args.simular:
-            print("Modo simulación: no se descarga nada.")
+            log.info("Modo simulación: no se descarga nada.")
             return 0
 
         carpeta.mkdir(parents=True, exist_ok=True)
         ci.exportar_salidas(fecha=fecha, ciclo=ciclo, carpeta=str(carpeta))
 
         def progreso(n: int, total: int, r: Resultado) -> None:
-            print(f"[{n}/{total}] {'OK' if r.ok else 'ERROR'} {r.nombre}: {r.mensaje}", flush=True)
+            log.info(f"[{n}/{total}] {'OK' if r.ok else 'ERROR'} {r.nombre}: {r.mensaje}")
 
         inicio_descarga = time.perf_counter()
-        print(f"Inicio de descarga: {ahora_utc()}", flush=True)
+        log.info(f"Inicio de descarga: {ahora_utc()}")
         try:
-            resultados = descargar_todo(sesion, urls, carpeta, cfg.descarga, progreso)
+            resultados = descargar_todo(lambda: crear_sesion(1), urls, carpeta, cfg.descarga, progreso)
         finally:
             imprimir_marca("Fin de descarga", inicio_descarga, inicio_programa)
 
         errores = [r for r in resultados if not r.ok]
-        print(f"Finalizado: {len(resultados) - len(errores)}/{len(resultados)} correctos; "
+        log.info(f"Finalizado: {len(resultados) - len(errores)}/{len(resultados)} correctos; "
               f"{len(errores)} errores")
         _resumen_ci(fecha, ciclo, cfg, resultados, time.perf_counter() - inicio_descarga)
         for r in errores:
             ci.anotar("error", f"{r.nombre}: {r.mensaje}")
         if errores:
             if cfg.flujo.crear_nc:
-                print("No se crean los .nc: la descarga tiene errores. Los fNNN se conservan.")
+                log.info("No se crean los .nc: la descarga tiene errores. Los fNNN se conservan.")
             return 1
         if cfg.flujo.crear_nc:
             return _continuar_con_crea_nc(carpeta)
-        print(f"Solo descarga: fNNN guardados en {carpeta}")
+        log.info(f"Solo descarga: fNNN guardados en {carpeta}")
         return 0
     except KeyboardInterrupt:
-        print("Interrumpido por el usuario.", file=sys.stderr)
+        log.warning("Interrumpido por el usuario.")
         return 130
     except (ErrorConfiguracion, OSError, ValueError, KeyError, RuntimeError) as exc:
-        print(f"Error de configuración/descarga: {exc}", file=sys.stderr)
+        log.error(f"Error de configuración/descarga: {exc}")
         ci.anotar("error", str(exc))
         return 2
     finally:

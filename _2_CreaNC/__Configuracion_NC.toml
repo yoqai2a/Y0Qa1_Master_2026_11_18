@@ -20,6 +20,12 @@ prefijo = "Y0QA1Map"
 grupos = ["Main", "Extra"]         # grupos de __Variables_NC.toml que se escriben
 conservar_ciclos = 10              # ciclos de 6 h para mantener aproximadamente las últimas 60 horas
 
+# Selecciones extra (mismo formato que seleccion_nc.json). Las capas activas de estos archivos
+# se SUMAN a las de seleccion_nc.json. Cada pestaña del visor declara aquí lo que necesita.
+selecciones_adicionales = [
+    "_0_Visor/corte_temporal/configuracion/capas_nc.json",   # pestaña Corte temporal
+]
+
 # Cómo se reparten las variables en archivos:
 #   "capa"      un archivo por variable y nivel (t_850hPa.nc). El visor baja solo
 #               lo que muestra: ~370 archivos pequeños. RECOMENDADO. Se añade

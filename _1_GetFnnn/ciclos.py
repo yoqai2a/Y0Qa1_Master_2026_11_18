@@ -1,6 +1,7 @@
 """Ciclos GFS: horas de pronóstico (fNNN), consulta de NOMADS y elección del ciclo."""
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -8,6 +9,8 @@ import requests
 
 from .configuracion import Config, Modelo
 from .nomads import url_directorio_ciclo
+
+log = logging.getLogger(__name__)
 
 CICLOS = ("18", "12", "06", "00")  # de más reciente a más antiguo dentro de un día
 _RE_FECHAS = re.compile(r"gfs\.(\d{8})/")
@@ -93,8 +96,8 @@ def buscar_ultimo_ciclo_web(
             if cfg.ciclos.exigir_completo:
                 faltan = sorted(set(horas_pronostico(cfg.modelo, ciclo)) - publicados)
                 if faltan:
-                    print(f"Ciclo {fecha} {ciclo}Z incompleto (faltan {len(faltan)} fNNN, "
-                          f"desde f{faltan[0]:03d}); se prueba el anterior.", flush=True)
+                    log.info(f"Ciclo {fecha} {ciclo}Z incompleto (faltan {len(faltan)} fNNN, "
+                          f"desde f{faltan[0]:03d}); se prueba el anterior.")
                     continue
             return fecha, ciclo, publicados
     return None
@@ -199,15 +202,15 @@ def elegir_ciclo(
     ultimo = buscar_ultimo_ciclo_web(sesion, cfg, ahora)
     if ultimo:
         fecha, ciclo, publicados = ultimo
-        print(f"Última carpeta/ciclo publicado en NOMADS: {fecha} {ciclo}Z")
-        print(f"Último fNNN listado en esa carpeta: f{max(publicados):03d}")
+        log.info(f"Última carpeta/ciclo publicado en NOMADS: {fecha} {ciclo}Z")
+        log.info(f"Último fNNN listado en esa carpeta: f{max(publicados):03d}")
     else:
         fecha, ciclo = ciclo_estimado(retraso, ahora)
         publicados = None
-        print("No pude consultar NOMADS; propongo el ciclo según el retraso configurado.")
-    print(f"Disponibilidad: {retraso:g} h después de la hora nominal del ciclo, calculada en UTC.")
-    print(f"Recomendación: {fecha} {ciclo}Z", flush=True)
+        log.info("No pude consultar NOMADS; propongo el ciclo según el retraso configurado.")
+    log.info(f"Disponibilidad: {retraso:g} h después de la hora nominal del ciclo, calculada en UTC.")
+    log.info(f"Recomendación: {fecha} {ciclo}Z")
     if not interactivo:
-        print("Modo no interactivo: se selecciona automáticamente el ciclo recomendado.")
+        log.info("Modo no interactivo: se selecciona automáticamente el ciclo recomendado.")
         return fecha, ciclo, publicados
     return _pedir_interactivo(sesion, cfg, fecha, ciclo, publicados)

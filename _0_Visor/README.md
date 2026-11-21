@@ -17,6 +17,8 @@ Las pestañas Tablas, UV, Corte temporal, Plan y Descarga se muestran según los
 | `pdf_tablas.py` | PDF imprimible (usa `fpdf2`). |
 | `accounts.py`, `limitador.py`, `errores.py` | Cuentas, límite de intentos de acceso y mensajes de error. |
 | `archivar_ciclo.py` | Crea el histórico de un ciclo (lo usa el workflow). |
+| `corte_temporal/` | Pestaña Corte temporal (código y `configuracion/` propios). |
+| `archivar_corte.py` | Crea el respaldo de perfiles del Corte temporal (lo usa el workflow). |
 
 Para agregar o cambiar una variable basta editar `variables_meteo.py`.
 
@@ -39,3 +41,9 @@ Lo genera GitHub Actions después de convertir cada ciclo (o a mano con `python 
 - Tras 5 intentos fallidos seguidos para un usuario se bloquea el acceso temporalmente (30 s, que se duplica con cada fallo adicional hasta un máximo de 15 min). El bloqueo termina solo, y los fallos se olvidan tras 30 min o al ingresar correctamente.
 - La sesión se cierra tras 120 minutos sin actividad (se cambia con `SESION_MAX_INACTIVIDAD_MIN` en los secretos).
 - Los mensajes de error muestran un texto simple al usuario; el detalle técnico queda en el registro. Para verlo también en pantalla, define `MOSTRAR_DETALLES_ERROR = "true"` en los secretos.
+
+## Pestaña Corte temporal
+
+Muestra, para un punto, un corte **tiempo × presión** de humedad relativa, temperatura o viento (rapidez con barbas, componente U o componente V), con todos los niveles de 1000 a 200 hPa. Se puede elegir ciclo, área, punto, vista, unidad (nudos, m/s o km/h para el viento), rango de presión y escala vertical (lineal o logarítmica), y descargar la imagen y los datos.
+
+Todo su código y su configuración están en `corte_temporal/` (ver `corte_temporal/configuracion/README.md`). El respaldo de perfiles queda en `___Data/___Historico_Corte/AAAAMMDD_HHZ.parquet`; para rehacerlo con otros puntos: `python _0_Visor/archivar_corte.py --todos`.
