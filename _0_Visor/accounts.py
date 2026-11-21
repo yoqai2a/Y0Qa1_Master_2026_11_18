@@ -97,6 +97,16 @@ def cargar_cuentas(ruta: Path | None = None) -> dict:
     return _validar(datos)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_cuentas_cacheado() -> dict:
+    """Cuentas del repositorio privado con caché de 60 s (evita una llamada a GitHub por interacción).
+
+    Para iniciar sesión se usa ``cargar_cuentas()`` (lectura fresca). Las funciones que modifican
+    las cuentas invalidan esta caché.
+    """
+    return cargar_cuentas()
+
+
 def usuarios_por_nombre(datos: dict) -> dict[str, dict]:
     return {str(u.get("username", "")).upper(): u for u in datos["users"]}
 
@@ -140,6 +150,7 @@ def _guardar(datos: dict, ruta: Path | None = None) -> None:
             f"GitHub no guardó {archivo} (HTTP {respuesta.status_code}). "
             "El token privado necesita Contents: write."
         )
+    cargar_cuentas_cacheado.clear()   # el próximo acceso ve la cuenta ya modificada
 
 
 def cambiar_clave(usuario: str, nueva: str, ruta: Path | None = None) -> None:

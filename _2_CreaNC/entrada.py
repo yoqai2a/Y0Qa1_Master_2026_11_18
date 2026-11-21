@@ -1,8 +1,11 @@
 """Localiza la carpeta AAAAMMDD/HH con los fNNN y lista sus archivos GRIB."""
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _RE_FECHA = re.compile(r"\d{8}")
 CICLOS = ("00", "06", "12", "18")
@@ -46,7 +49,7 @@ def listar_grib(carpeta: Path, resolucion: str = "auto") -> list[tuple[int, Path
         if grib_valido(ruta):
             validos.append((lead, ruta))
         else:
-            print(f"AVISO: {ruta.name} está incompleto o dañado; se omite.", flush=True)
+            log.warning(f"AVISO: {ruta.name} está incompleto o dañado; se omite.")
     if not validos:
         raise FileNotFoundError(f"Ningún GRIB válido en {carpeta}")
     return validos

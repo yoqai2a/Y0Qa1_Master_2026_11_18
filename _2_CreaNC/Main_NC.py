@@ -1,20 +1,22 @@
-"""Orquestador de la creación de NetCDF (se inicia desde _2_YoQai.py).
+"""Orquestador de la creación de NetCDF (se inicia desde _2_Y0Qa1_CreaNC.py).
 
 Uso (desde la raíz del proyecto):
-    python _2_YoQai.py                                  # ciclo más reciente de ___Data/___Fnnn
-    python _2_YoQai.py --fecha 20261106 --ciclo 12
-    python _2_YoQai.py "ruta/___Fnnn/20261106/12"       # carpeta concreta
-    python _2_YoQai.py --agrupacion variable --grupos Main --procesos 4
-    python _2_YoQai.py --simular                         # muestra el plan sin escribir
-    python _2_YoQai.py --inventario ruta/gfs.t12z.pgrb2.0p25.f012
+    python _2_Y0Qa1_CreaNC.py                                  # ciclo más reciente de ___Data/___Fnnn
+    python _2_Y0Qa1_CreaNC.py --fecha 20261106 --ciclo 12
+    python _2_Y0Qa1_CreaNC.py "ruta/___Fnnn/20261106/12"       # carpeta concreta
+    python _2_Y0Qa1_CreaNC.py --agrupacion variable --grupos Main --procesos 4
+    python _2_Y0Qa1_CreaNC.py --simular                         # muestra el plan sin escribir
+    python _2_Y0Qa1_CreaNC.py --inventario ruta/gfs.t12z.pgrb2.0p25.f012
 """
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+import logging
 import time
 from pathlib import Path
+
+from _Comun.registro import configurar as configurar_logging
 
 from .configuracion import ErrorConfiguracion, cargar_configuracion, procesos_efectivos
 from .conversion import convertir
@@ -23,6 +25,8 @@ from .plan import planificar
 from .salida import escribir_control, escribir_indice, escribir_ultimo, limpiar_ciclos
 from .utilidades import ahora_utc, duracion, tamano_legible
 from .variables import ErrorVariables, cargar_variables
+
+log = logging.getLogger(__name__)
 
 CARPETA_MODULO = Path(__file__).resolve().parent
 RAIZ_PROYECTO = CARPETA_MODULO.parent
@@ -63,18 +67,23 @@ def _mostrar_inventario(ruta: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configurar_logging()
     args = _parser().parse_args(argv)
     inicio = time.perf_counter()
     try:
         if args.inventario:
             _mostrar_inventario(args.inventario)
             return 0
-        print(f"Inicio del programa: {ahora_utc()}", flush=True)
+        log.info(f"Inicio del programa: {ahora_utc()}")
         cfg = cargar_configuracion(args.config, RAIZ_PROYECTO, args.agrupacion, args.grupos,
                                    args.procesos, args.compresion,
                                    False if args.conservar_fnnn else None)
         todas = cargar_variables(args.variables)
         capas = [c for c in todas if c.grupo in cfg.salida.grupos]
+        if not capas:
+            grupos = sorted({c.grupo for c in todas})
+            raise ErrorVariables(f"Ninguna variable pertenece a los grupos {list(cfg.salida.grupos)} "
+                                 f"(el .toml tiene: {grupos}).")
         try:
             seleccion = json.loads(args.seleccion_nc.read_text(encoding="utf-8-sig"))["archivos"]
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -89,26 +98,22 @@ def main(argv: list[str] | None = None) -> int:
         capas = [c for c in capas if seleccion.get(c.nombre, False)]
         if not capas:
             raise ErrorVariables(f"{args.seleccion_nc}: no hay archivos NetCDF seleccionados.")
-        if not capas:
-            grupos = sorted({c.grupo for c in todas})
-            raise ErrorVariables(f"Ninguna variable pertenece a los grupos {list(cfg.salida.grupos)} "
-                                 f"(el .toml tiene: {grupos}).")
 
         carpeta = resolver_carpeta(cfg.entrada.carpeta_fnnn, args.carpeta_grib, args.fecha, args.ciclo)
         fecha, ciclo = validar_carpeta_ciclo(carpeta)
         archivos = listar_grib(carpeta, cfg.entrada.resolucion)
-        print(f"Entrada: {carpeta} ({len(archivos)} fNNN: f{archivos[0][0]:03d}–f{archivos[-1][0]:03d})")
+        log.info(f"Entrada: {carpeta} ({len(archivos)} fNNN: f{archivos[0][0]:03d}–f{archivos[-1][0]:03d})")
         directorio = cfg.salida.carpeta_salida / fecha / ciclo
-        print(f"Salida: {directorio}", flush=True)
+        log.info(f"Salida: {directorio}")
 
         if args.simular:
             plan = planificar(capas, cfg.salida.agrupacion, cfg.salida.prefijo, fecha, ciclo)
-            print(f"Modo simulación: {len(capas)} variables en {len(plan)} archivo(s) "
+            log.info(f"Modo simulación: {len(capas)} variables en {len(plan)} archivo(s) "
                   f"('{cfg.salida.agrupacion}'), {procesos_efectivos(cfg)} proceso(s).")
             for nombre, grupo in list(plan.items())[:8]:
-                print(f"  {nombre}  ({len(grupo)} variable(s))")
+                log.info(f"  {nombre}  ({len(grupo)} variable(s))")
             if len(plan) > 8:
-                print(f"  ... y {len(plan) - 8} más")
+                log.info(f"  ... y {len(plan) - 8} más")
             return 0
 
         res = convertir(cfg, capas, archivos, fecha, ciclo, directorio)
@@ -118,33 +123,32 @@ def main(argv: list[str] | None = None) -> int:
         borrados = limpiar_ciclos(cfg.salida.carpeta_salida, cfg.salida.conservar_ciclos, (fecha, ciclo))
 
         total = sum(i.bytes for i in res.archivos)
-        print(f"NetCDF creados: {len(res.archivos)} archivo(s), {tamano_legible(total)} en total "
+        log.info(f"NetCDF creados: {len(res.archivos)} archivo(s), {tamano_legible(total)} en total "
               f"(el mayor: {tamano_legible(max(i.bytes for i in res.archivos))})")
-        print(f"Índice: {ruta_indice}")
-        print(f"Control de ciclos: {ruta_control}")
+        log.info(f"Índice: {ruta_indice}")
+        log.info(f"Control de ciclos: {ruta_control}")
         if borrados:
-            print(f"Limpieza: {borrados} archivo(s) de ciclos antiguos eliminados.")
+            log.info(f"Limpieza: {borrados} archivo(s) de ciclos antiguos eliminados.")
         for nombre, horas in sorted(res.duplicados.items()):
             lista = ", ".join(f"f{h:03d}" for h in horas[:4]) + ("..." if len(horas) > 4 else "")
-            print(f"Duplicados: {nombre} tenía varios mensajes candidatos en {len(horas)} hora(s) "
+            log.info(f"Duplicados: {nombre} tenía varios mensajes candidatos en {len(horas)} hora(s) "
                   f"({lista}); se aplicó la política 'duplicados' del campo.")
         if res.ausentes_siempre:
             muestra = ", ".join(res.ausentes_siempre[:6]) + ("..." if len(res.ausentes_siempre) > 6 else "")
-            print(f"AVISO: {len(res.ausentes_siempre)} variable(s) no están en ningún fNNN y no se escribieron "
+            log.warning(f"AVISO: {len(res.ausentes_siempre)} variable(s) no están en ningún fNNN y no se escribieron "
                   f"({muestra}). ¿Se descargó un conjunto que no las incluye?")
-        print(f"Duración de la conversión: {duracion(res.segundos)}")
+        log.info(f"Duración de la conversión: {duracion(res.segundos)}")
         # Solo se llega aquí si la conversión terminó sin excepción.
         if cfg.entrada.eliminar_fnnn:
-            print(f"fNNN eliminados de {carpeta}: {eliminar_fnnn(carpeta)} archivo(s); solo quedan los .nc.")
+            log.info(f"fNNN eliminados de {carpeta}: {eliminar_fnnn(carpeta)} archivo(s); solo quedan los .nc.")
         else:
-            print(f"fNNN conservados en {carpeta}.")
+            log.info(f"fNNN conservados en {carpeta}.")
         return 0
     except KeyboardInterrupt:
-        print("Interrumpido por el usuario.", file=sys.stderr)
+        log.warning("Interrumpido por el usuario.")
         return 130
     except (ErrorConfiguracion, ErrorVariables, OSError, ValueError, RuntimeError) as exc:
-        print(f"Error al crear NetCDF: {exc}", file=sys.stderr)
+        log.error(f"Error al crear NetCDF: {exc}")
         return 2
     finally:
-        print(f"Fin del programa: {ahora_utc()} | desde el inicio: {duracion(time.perf_counter() - inicio)}",
-              flush=True)
+        log.info(f"Fin del programa: {ahora_utc()} | desde el inicio: {duracion(time.perf_counter() - inicio)}")
