@@ -1,11 +1,8 @@
 """Utilidades de tiempo y formato para los mensajes de consola."""
 from __future__ import annotations
 
-import logging
 import time
 from datetime import datetime, timezone
-
-log = logging.getLogger(__name__)
 
 
 def duracion(segundos: float) -> str:
@@ -23,8 +20,8 @@ def ahora_utc() -> str:
 
 def imprimir_marca(etapa: str, inicio_etapa: float, inicio_programa: float) -> None:
     ahora = time.perf_counter()
-    log.info(f"{etapa}: {ahora_utc()} | duración: {duracion(ahora - inicio_etapa)}"
-          f" | desde el inicio: {duracion(ahora - inicio_programa)}")
+    print(f"{etapa}: {ahora_utc()} | duración: {duracion(ahora - inicio_etapa)}"
+          f" | desde el inicio: {duracion(ahora - inicio_programa)}", flush=True)
 
 
 def tamano_legible(n: float) -> str:

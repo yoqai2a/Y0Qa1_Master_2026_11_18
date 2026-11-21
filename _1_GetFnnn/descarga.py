@@ -1,10 +1,8 @@
 """Descarga paralela de fNNN, validación de GRIB y limpieza por retención."""
 from __future__ import annotations
 
-import logging
 import fnmatch
 import random
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -14,8 +12,6 @@ from typing import Callable
 import requests
 
 from .configuracion import Descarga
-
-log = logging.getLogger(__name__)
 
 BLOQUE = 1024 * 1024
 PATRONES_LIMPIEZA = (
@@ -105,33 +101,17 @@ def descargar_uno(
 
 
 def descargar_todo(
-    fabrica_sesion: Callable[[], requests.Session],
+    sesion: requests.Session,
     urls: list[tuple[str, str]],
     carpeta: Path,
     opc: Descarga,
     al_terminar: Callable[[int, int, Resultado], None] | None = None,
 ) -> list[Resultado]:
-    """Descarga en paralelo; `al_terminar(n, total, resultado)` informa el progreso.
-
-    Cada hilo usa su propia ``requests.Session`` (creada con ``fabrica_sesion``): la clase no
-    está garantizada como segura entre hilos y así no se comparten cookies ni conexiones.
-    """
+    """Descarga en paralelo; `al_terminar(n, total, resultado)` informa el progreso."""
     resultados: list[Resultado] = []
-    local = threading.local()
-    sesiones: list[requests.Session] = []
-    bloqueo = threading.Lock()
-
-    def tarea(nombre: str, url: str) -> Resultado:
-        sesion = getattr(local, "sesion", None)
-        if sesion is None:
-            sesion = local.sesion = fabrica_sesion()
-            with bloqueo:
-                sesiones.append(sesion)
-        return descargar_uno(sesion, nombre, url, carpeta, opc)
-
     pool = ThreadPoolExecutor(max_workers=max(1, min(opc.conexiones, len(urls))))
     try:
-        trabajos = [pool.submit(tarea, n, u) for n, u in urls]
+        trabajos = [pool.submit(descargar_uno, sesion, n, u, carpeta, opc) for n, u in urls]
         for n, futuro in enumerate(as_completed(trabajos), 1):
             resultado = futuro.result()
             resultados.append(resultado)
@@ -140,8 +120,6 @@ def descargar_todo(
     finally:
         # Ctrl+C: no deja encolados los trabajos pendientes.
         pool.shutdown(wait=True, cancel_futures=True)
-        for sesion in sesiones:
-            sesion.close()
     return resultados
 
 
@@ -165,5 +143,5 @@ def limpiar_antiguos(carpeta: Path, retencion_horas: float) -> int:
             sub.rmdir()  # solo prospera si está vacía
         except OSError:
             pass
-    log.info(f"Limpieza de retención: {borrados} GRIB antiguos eliminados.")
+    print(f"Limpieza de retención: {borrados} GRIB antiguos eliminados.")
     return borrados
