@@ -38,7 +38,7 @@ Lo genera GitHub Actions después de convertir cada ciclo (o a mano con `python 
 
 - Tras 5 intentos fallidos seguidos para un usuario se bloquea el acceso temporalmente (30 s, que se duplica con cada fallo adicional hasta un máximo de 15 min). El bloqueo termina solo, y los fallos se olvidan tras 30 min o al ingresar correctamente.
 - La sesión se cierra tras 120 minutos sin actividad (se cambia con `SESION_MAX_INACTIVIDAD_MIN` en los secretos).
-- Los mensajes de error muestran un texto simple al usuario; el detalle técnico queda en el registro. Para verlo también en pantalla, define `MOSTRAR_DETALLES_ERROR = "true"` en los secretos.
+- Los mensajes de error muestran un texto simple al usuario; el detalle técnico queda en el registro. El detalle se muestra automáticamente cuando abres el visor desde el mismo PC donde corre (localhost). Para verlo también en otros accesos, define `MOSTRAR_DETALLES_ERROR = "true"` en los secretos; con `"false"` se oculta siempre.
 
 ## Pestaña Corte temporal
 
