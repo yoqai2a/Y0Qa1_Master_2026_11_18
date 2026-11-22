@@ -1,0 +1,135 @@
+# ============================================================================
+# Configuración de la descarga de archivos fNNN (GFS / NOMADS)
+# Lo lee _1_GetFnnn/Main_Fnnn.py. Las rutas relativas parten de la raíz del
+# proyecto (la carpeta Y0Qa1_v03).
+#
+# Frecuencia: GFS publica un ciclo cada 6 h (00, 06, 12, 18 UTC). La descarga
+# automática en GitHub se programa en .github/workflows/GetFnnn.yml (cron cada
+# 6 h, desfasado para correr cuando el ciclo ya está publicado).
+# ============================================================================
+
+[modelo]
+url_base = "https://nomads.ncep.noaa.gov/cgi-bin"                      # filtro de NOMADS
+url_prod = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod"   # listado de ciclos
+resolucion = "0p25"        # 0p25, 0p50 o 1p00
+conjunto = "YoQai"          # debe existir como [conjuntos.<nombre>] más abajo
+parametros_extra = []      # nombres NOMADS sin =on, ej. ["var_PRATE"]
+paso_fino_horas = 1        # cada 1 h en los primeros días
+dias_horarios = 3          # día 0 más dos días; el tercero cierra a 03Z
+dias_maximos = 7           # límite absoluto de pronóstico
+hora_cierre_utc = 3        # 00:00 hora local UTC-3
+area = "SCGU"          # debe existir como [areas.<nombre>] más abajo (o usar --area)
+
+# ----------------------------------------------------------------------------
+# FLUJO tras la descarga
+#   crear_nc = false  -> solo descarga: los fNNN (GRIB) se guardan en carpeta_salida.
+#   crear_nc = true   -> al terminar la descarga sin errores continúa con _2_CreaNC y
+#                        crea los .nc. Si la conversión termina bien, los fNNN se
+#                        eliminan y solo quedan los .nc (ver [entrada] eliminar_fnnn
+#                        en _2_CreaNC/__Configuracion_NC.toml para conservarlos).
+# Si la descarga tiene errores o la conversión falla, los fNNN se conservan.
+# También se puede elegir por consola: --crear-nc  /  --solo-fnnn
+# ----------------------------------------------------------------------------
+[flujo]
+crear_nc = true
+
+[areas.SCGU]
+norte = -50.0
+sur = -90.0
+oeste = -85.0
+este = -55.0
+
+[areas.FIR_SCCZ]
+norte = -40.0
+sur = -65.0
+oeste = -100.0
+este = -50.0
+
+[ciclos]
+retraso_publicacion_horas = 4.3   # espera tras la hora nominal del ciclo
+exigir_completo = false           # true: solo acepta un ciclo con TODOS los fNNN
+                                  # objetivo publicados (si no, usa el anterior)
+
+[descarga]
+carpeta_salida = "___Data/___Fnnn"   # se crea <carpeta>/<AAAAMMDD>/<HH>/
+conexiones = 32
+reintentos = 4
+espera_reintento_s = 3.0
+tamano_minimo_bytes = 2000
+retencion_horas = 72
+timeout_conexion_s = 20
+timeout_lectura_s = 180
+
+# ----------------------------------------------------------------------------
+# CONJUNTOS DE VARIABLES
+# Para añadir uno nuevo basta crear otra sección [conjuntos.MiConjunto] y
+# poner conjunto = "MiConjunto" en [modelo] (o usar --conjunto en la consola).
+# Los niveles se escriben tal cual los nombra NOMADS, sin codificar.
+# ----------------------------------------------------------------------------
+
+[conjuntos.FULL]
+todas_variables = true
+todos_niveles = true
+
+[conjuntos.XyGrib]
+variables = [
+    "UGRD", "VGRD", "TCDC", "TMP",
+    "HGT", "VIS", "PWAT", "RH",
+    "DPT", "TMAX", "TMIN", "GUST",
+    "APCP", "CSNOW", "SNOD", "CFRZR",
+    "CAPE", "CIN", "REFC", "PRMSL",
+]
+niveles = [
+    "0.995_sigma_level", "10_m_above_ground", "925_mb",
+    "850_mb", "700_mb", "600_mb",
+    "500_mb", "400_mb", "300_mb",
+    "200_mb", "2_m_above_ground", "entire_atmosphere",
+    "surface", "cloud_ceiling", "0C_isotherm",
+    "mean_sea_level",
+]
+
+[conjuntos.YoQai]
+variables = [
+    "4LFTX", "ABSV", "ACPCP", "ALBDO",
+    "APCP", "CAPE", "CFRZR", "CICEP",
+    "CIN", "CLWMR", "CPOFP", "CPRAT",
+    "CRAIN", "CSNOW", "CWAT", "CWORK",
+    "DLWRF", "DPT", "DZDT", "FRICV",
+    "GFLUX", "GRLE", "GUST", "HCDC",
+    "HGT", "HLCY", "HPBL", "ICAHT",
+    "ICMR", "LCDC", "LFTX", "MCDC",
+    "MSLET", "O3MR", "PLPL", "POT",
+    "PRATE", "PRES", "PRMSL", "PWAT",
+    "REFC", "REFD", "RH", "RWMR",
+    "SNMR", "SNOD", "SPFH", "TCDC",
+    "TMAX", "TMIN", "TMP", "TOZNE",
+    "TSOIL", "UGRD", "U-GWD", "USTM",
+    "VGRD", "V-GWD", "VIS", "VSTM",
+    "VVEL", "VWSH", "WEASD",
+]
+niveles = [
+    "0-0.1_m_below_ground", "0.1-0.4_m_below_ground", "0.4-1_m_below_ground",
+    "1-2_m_below_ground", "0.995_sigma_level", "0.33-1_sigma_layer",
+    "0.44-0.72_sigma_layer", "0.44-1_sigma_layer", "0.72-0.94_sigma_layer",
+    "2_m_above_ground", "10_m_above_ground", "20_m_above_ground",
+    "30_m_above_ground", "40_m_above_ground", "50_m_above_ground",
+    "80_m_above_ground", "100_m_above_ground", "1000_m_above_ground",
+    "4000_m_above_ground", "3000-0_m_above_ground", "6000-0_m_above_ground",
+    "180-0_mb_above_ground", "255-0_mb_above_ground", "90-0_mb_above_ground",
+    "0C_isotherm", "1_hybrid_level", "1000_mb",
+    "975_mb", "950_mb", "925_mb",
+    "900_mb", "850_mb", "800_mb",
+    "750_mb", "700_mb", "650_mb",
+    "600_mb", "550_mb", "500_mb",
+    "450_mb", "400_mb", "350_mb",
+    "300_mb", "250_mb", "200_mb",
+    "150_mb", "100_mb", "surface",
+    "max_wind", "mean_sea_level", "boundary_layer_cloud_layer",
+    "tropopause", "entire_atmosphere", "entire_atmosphere_(considered_as_a_single_layer)",
+    "convective_cloud_layer", "convective_cloud_bottom_level", "convective_cloud_top_level",
+    "high_cloud_layer", "high_cloud_bottom_level", "high_cloud_top_level",
+    "low_cloud_layer", "low_cloud_bottom_level", "low_cloud_top_level",
+    "middle_cloud_layer", "middle_cloud_bottom_level", "middle_cloud_top_level",
+    "cloud_ceiling", "highest_tropospheric_freezing_level", "PV=-2e-06_(Km^2/kg/s)_surface",
+    "PV=2e-06_(Km^2/kg/s)_surface",
+]
