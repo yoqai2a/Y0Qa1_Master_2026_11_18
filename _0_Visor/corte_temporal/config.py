@@ -123,9 +123,17 @@ def niveles_desde_capas(ruta: Path = ARCHIVO_CAPAS) -> dict[str, tuple[int, ...]
     return {pre: tuple(sorted(lista, reverse=True)) for pre, lista in niveles.items()}
 
 
-def _vista(nombre: str, datos: dict, capas: dict[str, CapaCfg]) -> Vista:
-    import matplotlib
+def _nombres_de_paletas() -> frozenset[str] | None:
+    """Nombres de paletas de matplotlib, o None si no está instalado (p. ej. en GitHub Actions,
+    que solo crea los respaldos y no dibuja). En ese caso la paleta se valida al dibujar, en el visor."""
+    try:
+        from matplotlib import colormaps
+    except ImportError:
+        return None
+    return frozenset(colormaps)
 
+
+def _vista(nombre: str, datos: dict, capas: dict[str, CapaCfg]) -> Vista:
     donde = f"variables.json › vista '{nombre}'"
     campo = datos.get("campo")
     if campo != "rapidez" and campo not in capas:
@@ -133,7 +141,8 @@ def _vista(nombre: str, datos: dict, capas: dict[str, CapaCfg]) -> Vista:
     if campo == "rapidez" and not {"u", "v"} <= set(capas):
         raise ErrorConfigCorte(f"{donde}: 'rapidez' necesita las capas u y v en 'capas'.")
     paleta = datos.get("paleta", "viridis")
-    if paleta not in matplotlib.colormaps:
+    paletas = _nombres_de_paletas()
+    if paletas is not None and paleta not in paletas:
         raise ErrorConfigCorte(f"{donde}: la paleta '{paleta}' no existe en matplotlib.")
     extension = datos.get("extension", "both")
     if extension not in _EXTENSIONES:
