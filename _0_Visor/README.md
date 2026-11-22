@@ -1,0 +1,11 @@
+# Visor Y0Qa1
+
+La configuración de usuarios y permisos se carga desde el repositorio privado. Consulta el README de la raíz para definir `AUTH_GITHUB_REPO`, `AUTH_GITHUB_FILE`, `AUTH_GITHUB_BRANCH` y `AUTH_GITHUB_TOKEN` en los secretos del entorno. No guardes `accounts.json` ni tokens en este repositorio público.
+
+Las pestañas Tablas, UV, Corte temporal, Plan y Descarga se muestran según los permisos que devuelva el archivo de cuentas privado. Tablas lee los NetCDF locales bajo `___Data/___NC` o, en Streamlit Cloud, el archivo comprimido `___Data/___Historico/YYYYMMDD_CCZ.csv.gz` guardado por el workflow para cada ciclo.
+
+En Tablas, **Guardar histórico del ciclo** genera `___Data/___Historico/YYYYMMDD_CCZ.csv.gz` con todas las horas del ciclo para cada punto y las ocho variables seleccionadas: racha, precipitación, isoterma 0, CAPE, temperatura máxima y mínima, base de nubes y visibilidad. Incluye área, punto, coordenadas, hora UTC, valor, unidad y archivo NetCDF de origen. La racha se guarda en km/h; temperaturas en °C; base de nubes en ft; visibilidad en m; precipitación en mm; CAPE en J/kg; e isoterma 0 en m, sin la aproximación visual a centenas. Si se vuelve a guardar el mismo ciclo, se reemplaza su archivo con los datos actuales. GitHub Actions crea y publica automáticamente este histórico después de convertir un ciclo.
+
+La pestaña Tablas permite descargar un PDF imprimible con los resúmenes por área de precipitación, CAPE, racha de viento e isoterma 0, usando el ciclo seleccionado y el mismo cierre UTC para las cuatro. El cierre global predeterminado es 12Z; también se puede cambiar y guardar desde las opciones de Tablas.
+
+Las columnas diarias muestran `DD_MM_HHZ / DD_MM_HHZ` en UTC. La hora inicial es la hora posterior al cierre seleccionado: por ejemplo, cierre 12Z usa 13Z–12Z del día siguiente; cierre 03Z usa 04Z–03Z; cierre 00Z usa 01Z–00Z. La isoterma 0 puede mostrar el mínimo/máximo del período diario o, al activar el formato especial, los valores de 12Z y 00Z. CAPE usa rangos en J/kg; temperatura usa los límites y colores de `rangos_temperatura.json`. Base de nubes y visibilidad comparten los colores y umbrales equivalentes: en base de nubes los umbrales se expresan en ft y la unidad predeterminada es ft; visibilidad se expresa en m.
