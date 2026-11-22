@@ -1,3 +1,0 @@
-# Dependencias para ejecutar la descarga y la creación de NetCDF (también las usa el workflow).
-# La lista vive en .github/requirements-workflow.txt. Para el visor: _0_Visor/requirements.txt
--r .github/requirements-workflow.txt
