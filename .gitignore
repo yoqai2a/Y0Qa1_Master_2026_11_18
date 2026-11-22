@@ -1,0 +1,20 @@
+# Tokens y secretos de ejecución
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+**/secrets.toml
+
+# Las cuentas y sus hashes solo pertenecen al repositorio privado.
+**/accounts.json
+
+# Datos grandes locales. Actions publica los .nc seleccionados y el histórico con git add -f.
+___Data/___Fnnn/
+___Data/___NC/
+___Data/___Historico/
+___Data/___Historico_Corte/
+___Data/Control_NC.json
+
+# Archivos temporales de Python y editores
+__pycache__/
+*.py[cod]
+.venv/
+venv/
