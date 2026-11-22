@@ -1,5 +1,0 @@
-{
-  "version": 1,
-  "description": "publicar_nc_en_git: false (recomendado) sube a GitHub solo el respaldo compacto de perfiles (___Data/___Historico_Corte). true sube también las 76 capas NetCDF de cada ciclo; es lo que permite recalcular con otros puntos en cualquier PC, pero hace crecer mucho el repositorio.",
-  "publicar_nc_en_git": false
-}
