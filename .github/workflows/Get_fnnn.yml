@@ -27,21 +27,28 @@ on:
         type: boolean
         default: false
 
+# Permisos mínimos para todo el workflow; el job pide solo lo que necesita.
 permissions:
-  contents: write
+  contents: read
 
+# Un solo grupo: las ejecuciones se hacen en fila, así nunca publican a la vez
+# y la segunda ya ve el control.xlsx actualizado por la primera.
 concurrency:
-  group: gfs-${{ github.event_name }}-${{ inputs.fecha || github.run_id }}-${{ inputs.ciclo || github.run_id }}
+  group: gfs-publicar
   cancel-in-progress: false
 
 jobs:
   descargar:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    permissions:
+      contents: write   # publicar NetCDF, control e histórico
+      issues: write     # avisar cuando el job falla
     steps:
-      - uses: actions/checkout@v5
+      # Acciones fijadas por SHA de commit (el comentario indica la versión).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
@@ -59,19 +66,34 @@ jobs:
           FORZAR_MANUAL: ${{ inputs.forzar }}
         run: |
           if [ "$EVENTO" = "schedule" ]; then
-            FECHA=$(date -u +%Y%m%d)
             case "$CRON" in
               "20 4 * * *") CICLO="00" ;;
               "20 10 * * *") CICLO="06" ;;
               "20 16 * * *") CICLO="12" ;;
               "20 22 * * *") CICLO="18" ;;
-              *) echo "Horario programado no reconocido: $CRON" >&2; exit 1 ;;
+              *) echo "::error::Horario programado no reconocido: $CRON" >&2; exit 1 ;;
             esac
+            # GitHub puede retrasar los cron. Si la ejecución llega después de la medianoche UTC,
+            # el ciclo pertenece al día anterior (p. ej. el de las 18Z que corre a las 00:30).
+            FECHA=$(date -u +%Y%m%d)
+            if [ "$((10#$(date -u +%H)))" -lt "$((10#$CICLO))" ]; then
+              FECHA=$(date -u -d "yesterday" +%Y%m%d)
+            fi
             FORZAR="false"
           else
             FECHA="$FECHA_MANUAL"
             CICLO="$CICLO_MANUAL"
             FORZAR="$FORZAR_MANUAL"
+            # Validación temprana de la fecha escrita a mano.
+            if ! [[ "$FECHA" =~ ^[0-9]{8}$ ]] \
+               || [ "$(date -u -d "$FECHA" +%Y%m%d 2>/dev/null || true)" != "$FECHA" ]; then
+              echo "::error::La fecha '$FECHA' no es válida. Usa el formato AAAAMMDD con una fecha real (p. ej. 20261119)." >&2
+              exit 1
+            fi
+            if [ "$FECHA" -gt "$(date -u +%Y%m%d)" ]; then
+              echo "::error::La fecha $FECHA es futura; GFS aún no tiene ese ciclo." >&2
+              exit 1
+            fi
           fi
           echo "fecha=$FECHA" >> "$GITHUB_OUTPUT"
           echo "ciclo=$CICLO" >> "$GITHUB_OUTPUT"
@@ -85,21 +107,37 @@ jobs:
           FORZAR: ${{ steps.parametros.outputs.forzar }}
         run: |
           ARGS=(--fecha "$FECHA" --ciclo "$CICLO" --sin-preguntas --crear-nc)
-          HISTORICO="___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
-          if [ "$FORZAR" = "true" ] || [ ! -f "$HISTORICO" ]; then ARGS+=(--forzar); fi
-          python _1_YoQai_GetFnnn.py "${ARGS[@]}"
+          # El histórico puede estar en formato Parquet (actual) o CSV comprimido (anterior).
+          # Se rehace el ciclo si falta cualquiera de sus respaldos (Tablas o Corte temporal).
+          if [ "$FORZAR" = "true" ] \
+             || ! compgen -G "___Data/___Historico/${FECHA}_${CICLO}Z.*" > /dev/null \
+             || ! compgen -G "___Data/___Historico_Corte/${FECHA}_${CICLO}Z.*" > /dev/null; then
+            ARGS+=(--forzar)
+          fi
+          python _1_Y0Qa1_GetFnnn.py "${ARGS[@]}"
 
-      - name: Crear histórico comprimido para Tablas
+      - name: Crear histórico para Tablas
         env:
           FECHA: ${{ steps.parametros.outputs.fecha }}
           CICLO: ${{ steps.parametros.outputs.ciclo }}
           FORZAR: ${{ steps.parametros.outputs.forzar }}
         run: |
-          HISTORICO="___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
-          if [ -f "$HISTORICO" ] && [ "$FORZAR" != "true" ]; then
+          if compgen -G "___Data/___Historico/${FECHA}_${CICLO}Z.*" > /dev/null && [ "$FORZAR" != "true" ]; then
             echo "El histórico ya existe; no se vuelve a generar."
           else
-            python _0_Visor/archivar_ciclo.py --fecha "$FECHA" --ciclo "$CICLO"
+            python _0_Visor/tablas/archivar_ciclo.py --fecha "$FECHA" --ciclo "$CICLO"
+          fi
+
+      - name: Crear perfiles del Corte temporal
+        env:
+          FECHA: ${{ steps.parametros.outputs.fecha }}
+          CICLO: ${{ steps.parametros.outputs.ciclo }}
+          FORZAR: ${{ steps.parametros.outputs.forzar }}
+        run: |
+          if compgen -G "___Data/___Historico_Corte/${FECHA}_${CICLO}Z.*" > /dev/null && [ "$FORZAR" != "true" ]; then
+            echo "El respaldo del Corte temporal ya existe; no se vuelve a generar."
+          else
+            python _0_Visor/archivar_corte.py --fecha "$FECHA" --ciclo "$CICLO"
           fi
 
       - name: Guardar control e histórico en GitHub
@@ -107,13 +145,22 @@ jobs:
         env:
           FECHA: ${{ steps.parametros.outputs.fecha }}
           CICLO: ${{ steps.parametros.outputs.ciclo }}
+        run: bash .github/scripts/publicar.sh
+
+      - name: Avisar del fallo con un Issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FECHA: ${{ steps.parametros.outputs.fecha }}
+          CICLO: ${{ steps.parametros.outputs.ciclo }}
+          URL_EJECUCION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          git add -f ___Data/control.xlsx
-          git add -f "___Data/___Historico/${FECHA}_${CICLO}Z.csv.gz"
-          git add -A -f ___Data/___NC
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "Guardar NetCDF seleccionados, control e histórico ${FECHA} ${CICLO}Z"
-            git push
+          # Un solo Issue por ciclo: si ya hay uno abierto, solo se agrega un comentario.
+          TITULO="Falló la descarga GFS ${FECHA:-?} ${CICLO:-?}Z"
+          EXISTENTE=$(gh issue list --state open --search "\"$TITULO\" in:title" --json number --jq '.[0].number' || true)
+          CUERPO="El workflow terminó con error. Revisa el detalle en: ${URL_EJECUCION}"
+          if [ -n "$EXISTENTE" ]; then
+            gh issue comment "$EXISTENTE" --body "Nuevo fallo. ${CUERPO}" || true
+          else
+            gh issue create --title "$TITULO" --body "$CUERPO" || true
           fi
