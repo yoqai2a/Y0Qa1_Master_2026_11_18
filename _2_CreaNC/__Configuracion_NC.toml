@@ -1,0 +1,47 @@
+# ============================================================================
+# Configuración de la creación de NetCDF (.nc) a partir de los fNNN de GFS
+# Lo lee _2_CreaNC/Main_NC.py. Las rutas relativas parten de la raíz del
+# proyecto (la carpeta Y0Qa1_v03). Las variables a escribir se definen en
+# __Variables_NC.toml.
+# ============================================================================
+
+[entrada]
+carpeta_fnnn = "___Data/___Fnnn"   # la que llena _1_GetFnnn (AAAAMMDD/HH/gfs.tHHz...fNNN)
+resolucion = "auto"                # "auto" o 0p25 / 0p50 / 1p00
+# Sin argumentos se procesa el ciclo más reciente que haya en carpeta_fnnn.
+eliminar_fnnn = true               # true: al terminar la conversión con éxito se borran los
+                                   #       fNNN del ciclo y solo quedan los .nc.
+                                   # false: se conservan (o usar --conservar-fnnn).
+                                   # Si la conversión falla, los fNNN nunca se borran.
+
+[salida]
+carpeta_salida = "___Data/___NC"   # se crea <carpeta>/<AAAAMMDD>/<HH>/
+prefijo = "Y0QA1Map"
+grupos = ["Main", "Extra"]         # grupos de __Variables_NC.toml que se escriben
+conservar_ciclos = 10              # ciclos de 6 h para mantener aproximadamente las últimas 60 horas
+
+# Selecciones extra (mismo formato que seleccion_nc.json). Las capas activas de estos archivos
+# se SUMAN a las de seleccion_nc.json. Cada pestaña del visor declara aquí lo que necesita.
+selecciones_adicionales = [
+    "_0_Visor/corte_temporal/configuracion/capas_nc.json",   # pestaña Corte temporal
+]
+
+# Cómo se reparten las variables en archivos:
+#   "capa"      un archivo por variable y nivel (t_850hPa.nc). El visor baja solo
+#               lo que muestra: ~370 archivos pequeños. RECOMENDADO. Se añade
+#               al nombre el número de mensaje GRIB del primer fNNN (_msgNNN).
+#   "variable"  un archivo por shortName con todos sus niveles (t.nc, u.nc ...).
+#               Útil si el visor suele pedir perfiles verticales completos.
+#   "grupo"     un archivo por grupo (Main.nc, Extra.nc), como antes.
+#   "unico"     un solo archivo con todo (Todo.nc).
+agrupacion = "capa"
+
+[netcdf]
+compresion = 1                # 0-9 (zlib). 1 = rápido; subir apenas reduce el tamaño
+shuffle = true                # reordena bytes antes de comprimir: comprime mejor
+cifras_significativas = 0     # 0 = sin pérdida. 4-5 reduce mucho el tamaño (pérdida
+                              # imperceptible para mapas); requiere netCDF4 >= 1.6
+archivos_simultaneos = 64     # archivos .nc abiertos a la vez (cada pasada lee los fNNN)
+
+[proceso]
+procesos = 0                  # procesos de lectura GRIB en paralelo (0 = núcleos del equipo)

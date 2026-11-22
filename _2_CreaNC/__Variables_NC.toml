@@ -1,0 +1,1083 @@
+# ============================================================================
+# Variables que se escriben en los NetCDF (solo estas; el resto de campos del
+# GRIB se ignora). Reemplaza a Variables_Clasificadas.json.
+#
+# Cada [[campo]] = una variable física con una lista de niveles.
+#   grupo      "Main" o "Extra" (cualquier texto; sirve para agrupar archivos)
+#   shortName  nombre GRIB (pygrib/ecCodes)           -> obligatorio
+#   tipoNivel  typeOfLevel de ecCodes                 -> obligatorio
+#   niveles    lista de niveles. Un número es el 'level' del GRIB; para capas
+#              entre dos superficies usa { level=.., topLevel=.., bottomLevel=.. }
+#   stepType   instant (def.), avg, accum, max, min
+#   nombre, unidades   informativos (van a los atributos long_name / units)
+#   activo = false     desactiva el campo sin borrarlo
+#   sufijo     texto que se añade al nombre de cada variable (para distinguir)
+#
+# Se identifican por nombre, no por número de mensaje, así que sirve con
+# cualquier conjunto descargado (FULL, XyGrib, YoQai). Si un campo no está en
+# el GRIB simplemente queda vacío (se avisa al final).
+#
+# Filtros opcionales para campos que el GRIB repite con el mismo nombre:
+#   intervalo = "desde_inicio"   solo el acumulado que parte de f000 (0-12 h),
+#                                no la ventana de 6 h (6-12 h)
+#   ocurrencia = N               el N-ésimo mensaje (en orden de archivo) con
+#                                esa misma identidad
+#   parametro = "d.c.n"          discipline.parameterCategory.parameterNumber
+#                                GRIB2 (véase  --inventario <archivo fNNN>)
+#   duplicados = "ultimo"        qué hacer si tras los filtros siguen coincidiendo
+#                                varios mensajes en un mismo fNNN: "ultimo" (def.),
+#                                "primero" o "error". Se informa al terminar.
+#                                Ej.: en f006 GFS trae tp "0-6" dos veces (ventana y
+#                                acumulado); el acumulado es el último.
+# ============================================================================
+
+# ============================================================================
+# GRUPO Main
+# ============================================================================
+
+[[campo]]
+grupo = "Main"
+shortName = "prmsl"
+nombre = "Pressure reduced to MSL"
+unidades = "Pa"
+tipoNivel = "meanSea"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "snmr"
+nombre = "Snow mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "hybrid"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "vis"
+nombre = "Visibility"
+unidades = "m"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "u"
+nombre = "U component of wind"
+unidades = "m s**-1"
+tipoNivel = "planetaryBoundaryLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "v"
+nombre = "V component of wind"
+unidades = "m s**-1"
+tipoNivel = "planetaryBoundaryLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "gust"
+nombre = "Wind speed (gust)"
+unidades = "m s**-1"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "t"
+nombre = "Temperature"
+unidades = "K"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "r"
+nombre = "Relative humidity"
+unidades = "%"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "wz"
+nombre = "Geometric vertical velocity"
+unidades = "m s**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "u"
+nombre = "U component of wind"
+unidades = "m s**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "v"
+nombre = "V component of wind"
+unidades = "m s**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "absv"
+nombre = "Absolute vorticity"
+unidades = "s**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "orog"
+nombre = "Orography"
+unidades = "m"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "t"
+nombre = "Temperature"
+unidades = "K"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "2t"
+nombre = "2 metre temperature"
+unidades = "K"
+tipoNivel = "heightAboveGround"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "2d"
+nombre = "2 metre dewpoint temperature"
+unidades = "K"
+tipoNivel = "heightAboveGround"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "2r"
+nombre = "2 metre relative humidity"
+unidades = "%"
+tipoNivel = "heightAboveGround"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "aptmp"
+nombre = "Apparent temperature"
+unidades = "K"
+tipoNivel = "heightAboveGround"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "tmax"
+nombre = "Maximum temperature"
+unidades = "K"
+tipoNivel = "heightAboveGround"
+stepType = "max"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "tmin"
+nombre = "Minimum temperature"
+unidades = "K"
+tipoNivel = "heightAboveGround"
+stepType = "min"
+niveles = [2]
+
+[[campo]]
+grupo = "Main"
+shortName = "10u"
+nombre = "10 metre U wind component"
+unidades = "m s**-1"
+tipoNivel = "heightAboveGround"
+niveles = [10]
+
+[[campo]]
+grupo = "Main"
+shortName = "10v"
+nombre = "10 metre V wind component"
+unidades = "m s**-1"
+tipoNivel = "heightAboveGround"
+niveles = [10]
+
+[[campo]]
+grupo = "Main"
+shortName = "tp"
+nombre = "Total Precipitation"
+unidades = "kg m**-2"
+tipoNivel = "surface"
+stepType = "accum"
+intervalo = "desde_inicio"
+duplicados = "ultimo"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "acpcp"
+nombre = "Convective precipitation (water)"
+unidades = "kg m**-2"
+tipoNivel = "surface"
+stepType = "accum"
+intervalo = "desde_inicio"
+duplicados = "ultimo"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "lftx"
+nombre = "Surface lifted index"
+unidades = "K"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "cape"
+nombre = "Convective available potential energy"
+unidades = "J kg**-1"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "cin"
+nombre = "Convective inhibition"
+unidades = "J kg**-1"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "pwat"
+nombre = "Precipitable water"
+unidades = "kg m**-2"
+tipoNivel = "atmosphereSingleLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "cwat"
+nombre = "Cloud water"
+unidades = "kg m**-2"
+tipoNivel = "atmosphereSingleLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "r"
+nombre = "Relative humidity"
+unidades = "%"
+tipoNivel = "atmosphereSingleLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "tozne"
+nombre = "Total ozone"
+unidades = "DU"
+tipoNivel = "atmosphereSingleLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Main"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "cloudCeiling"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "trpp"
+nombre = "Tropopause pressure"
+unidades = "Pa"
+tipoNivel = "tropopause"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "icaht"
+nombre = "ICAO Standard Atmosphere reference height"
+unidades = "m"
+tipoNivel = "tropopause"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "tropopause"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "t"
+nombre = "Temperature"
+unidades = "K"
+tipoNivel = "tropopause"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "u"
+nombre = "U component of wind"
+unidades = "m s**-1"
+tipoNivel = "maxWind"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "v"
+nombre = "V component of wind"
+unidades = "m s**-1"
+tipoNivel = "maxWind"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "isothermZero"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "4lftx"
+nombre = "Best (4-layer) lifted index"
+unidades = "K"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "unknown"
+nombre = "unknown"
+unidades = "unknown"
+tipoNivel = "surface"
+ocurrencia = 2
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "t"
+nombre = "Temperature"
+unidades = "K"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "pt"
+nombre = "Potential temperature"
+unidades = "K"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "r"
+nombre = "Relative humidity"
+unidades = "%"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "u"
+nombre = "U component of wind"
+unidades = "m s**-1"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "v"
+nombre = "V component of wind"
+unidades = "m s**-1"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "w"
+nombre = "Vertical velocity"
+unidades = "Pa s**-1"
+tipoNivel = "sigma"
+niveles = [1]
+
+[[campo]]
+grupo = "Main"
+shortName = "avg_al"
+nombre = "Time-mean forecast albedo"
+unidades = "%"
+tipoNivel = "surface"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Main"
+shortName = "sit"
+nombre = "Sea ice temperature"
+unidades = "K"
+tipoNivel = "surface"
+niveles = [0]
+
+# ============================================================================
+# GRUPO Extra
+# ============================================================================
+
+[[campo]]
+grupo = "Extra"
+shortName = "clwmr"
+nombre = "Cloud mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "hybrid"
+niveles = [1]
+
+[[campo]]
+grupo = "Extra"
+shortName = "icmr"
+nombre = "Ice water mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "hybrid"
+niveles = [1]
+
+[[campo]]
+grupo = "Extra"
+shortName = "rwmr"
+nombre = "Rain mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "hybrid"
+niveles = [1]
+
+[[campo]]
+grupo = "Extra"
+shortName = "grle"
+nombre = "Graupel (snow pellets)"
+unidades = "kg kg**-1"
+tipoNivel = "hybrid"
+niveles = [1]
+
+[[campo]]
+grupo = "Extra"
+shortName = "refd"
+nombre = "Derived radar reflectivity"
+unidades = "dB"
+tipoNivel = "hybrid"
+niveles = [1, 2]
+
+[[campo]]
+grupo = "Extra"
+shortName = "refc"
+nombre = "Maximum/Composite radar reflectivity"
+unidades = "dB"
+tipoNivel = "atmosphere"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "VRATE"
+nombre = "Ventilation Rate"
+unidades = "m**2 s**-1"
+tipoNivel = "planetaryBoundaryLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "tcc"
+nombre = "Total Cloud Cover"
+unidades = "%"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "q"
+nombre = "Specific humidity"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "clwmr"
+nombre = "Cloud mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "icmr"
+nombre = "Ice water mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "rwmr"
+nombre = "Rain mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "snmr"
+nombre = "Snow mixing ratio"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "grle"
+nombre = "Graupel (snow pellets)"
+unidades = "kg kg**-1"
+tipoNivel = "isobaricInhPa"
+niveles = [
+    200, 250, 300, 350, 400, 450, 500, 550, 600, 650,
+    700, 750, 800, 850, 900, 925, 950, 975, 1000,
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "hindex"
+nombre = "Haines Index"
+unidades = "Numeric"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "mslet"
+nombre = "MSLP (Eta model reduction)"
+unidades = "Pa"
+tipoNivel = "meanSea"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "refd"
+nombre = "Derived radar reflectivity"
+unidades = "dB"
+tipoNivel = "heightAboveGround"
+niveles = [4000, 1000]
+
+[[campo]]
+grupo = "Extra"
+shortName = "sp"
+nombre = "Surface pressure"
+unidades = "Pa"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "st"
+nombre = "Soil temperature"
+unidades = "K"
+tipoNivel = "depthBelowLandLayer"
+niveles = [
+    { level = 0, topLevel = 0.0, bottomLevel = 0.1 },
+    { level = 0, topLevel = 0.1, bottomLevel = 0.4 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "sdwe"
+nombre = "Water equivalent of accumulated snow depth (deprecated)"
+unidades = "kg m**-2"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "sde"
+nombre = "Snow depth"
+unidades = "m"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "2sh"
+nombre = "2 metre specific humidity"
+unidades = "kg kg**-1"
+tipoNivel = "heightAboveGround"
+niveles = [2]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cpofp"
+nombre = "Percent frozen precipitation"
+unidades = "%"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cpr"
+nombre = "Convective precipitation rate"
+unidades = "kg m**-2 s**-1"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "prate"
+nombre = "Precipitation rate"
+unidades = "kg m**-2 s**-1"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cpr"
+nombre = "Convective precipitation rate"
+unidades = "kg m**-2 s**-1"
+tipoNivel = "surface"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "prate"
+nombre = "Precipitation rate"
+unidades = "kg m**-2 s**-1"
+tipoNivel = "surface"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "watr"
+nombre = "Water runoff"
+unidades = "kg m**-2"
+tipoNivel = "surface"
+stepType = "accum"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "csnow"
+nombre = "Categorical snow"
+unidades = "(Code table 4.222)"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cicep"
+nombre = "Categorical ice pellets"
+unidades = "(Code table 4.222)"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cfrzr"
+nombre = "Categorical freezing rain"
+unidades = "(Code table 4.222)"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "crain"
+nombre = "Categorical rain"
+unidades = "(Code table 4.222)"
+tipoNivel = "surface"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_utaua"
+nombre = "Time-mean U-component of atmospheric surface momentum flux"
+unidades = "N m**-2"
+tipoNivel = "surface"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_vtaua"
+nombre = "Time-mean V-component of atmospheric surface momentum flux"
+unidades = "N m**-2"
+tipoNivel = "surface"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "lcc"
+nombre = "Low cloud cover"
+unidades = "%"
+tipoNivel = "lowCloudLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_lcc"
+nombre = "Time-mean low cloud cover"
+unidades = "%"
+tipoNivel = "lowCloudLayer"
+stepType = "avg"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "mcc"
+nombre = "Medium cloud cover"
+unidades = "%"
+tipoNivel = "middleCloudLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_mcc"
+nombre = "Time-mean medium cloud cover"
+unidades = "%"
+tipoNivel = "middleCloudLayer"
+stepType = "avg"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "hcc"
+nombre = "High cloud cover"
+unidades = "%"
+tipoNivel = "highCloudLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_hcc"
+nombre = "Time-mean high cloud cover"
+unidades = "%"
+tipoNivel = "highCloudLayer"
+stepType = "avg"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "tcc"
+nombre = "Total Cloud Cover"
+unidades = "%"
+tipoNivel = "atmosphere"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "tcc"
+nombre = "Total Cloud Cover"
+unidades = "%"
+tipoNivel = "atmosphere"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "pres"
+nombre = "Pressure"
+unidades = "Pa"
+tipoNivel = "convectiveCloudBottom"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "lowCloudBottom"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "middleCloudBottom"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "highCloudBottom"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "pres"
+nombre = "Pressure"
+unidades = "Pa"
+tipoNivel = "convectiveCloudTop"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "lowCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "middleCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_pres"
+nombre = "Time-mean pressure"
+unidades = "Pa"
+tipoNivel = "highCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_t"
+nombre = "Time-mean temperature"
+unidades = "K"
+tipoNivel = "lowCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_t"
+nombre = "Time-mean temperature"
+unidades = "K"
+tipoNivel = "middleCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "avg_t"
+nombre = "Time-mean temperature"
+unidades = "K"
+tipoNivel = "highCloudTop"
+stepType = "avg"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "tcc"
+nombre = "Total Cloud Cover"
+unidades = "%"
+tipoNivel = "convectiveCloudLayer"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "tcc"
+nombre = "Total Cloud Cover"
+unidades = "%"
+tipoNivel = "boundaryLayerCloudLayer"
+stepType = "avg"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "cwork"
+nombre = "Cloud work function"
+unidades = "J kg**-1"
+tipoNivel = "atmosphereSingleLayer"
+stepType = "avg"
+niveles = [
+    { level = 0, topLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "hlcy"
+nombre = "Storm relative helicity"
+unidades = "m**2 s**-2"
+tipoNivel = "heightAboveGroundLayer"
+niveles = [
+    { level = 3000, topLevel = 3000.0, bottomLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "ustm"
+nombre = "U-component storm motion"
+unidades = "m s**-1"
+tipoNivel = "heightAboveGroundLayer"
+niveles = [
+    { level = 6000, topLevel = 6000.0, bottomLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "vstm"
+nombre = "V-component storm motion"
+unidades = "m s**-1"
+tipoNivel = "heightAboveGroundLayer"
+niveles = [
+    { level = 6000, topLevel = 6000.0, bottomLevel = 0.0 },
+]
+
+[[campo]]
+grupo = "Extra"
+shortName = "vwsh"
+nombre = "Vertical speed shear"
+unidades = "s**-1"
+tipoNivel = "tropopause"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "pres"
+nombre = "Pressure"
+unidades = "Pa"
+tipoNivel = "maxWind"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "icaht"
+nombre = "ICAO Standard Atmosphere reference height"
+unidades = "m"
+tipoNivel = "maxWind"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "maxWind"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "r"
+nombre = "Relative humidity"
+unidades = "%"
+tipoNivel = "isothermZero"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "gh"
+nombre = "Geopotential height"
+unidades = "gpm"
+tipoNivel = "highestTroposphericFreezing"
+niveles = [0]
+
+[[campo]]
+grupo = "Extra"
+shortName = "plpl"
+nombre = "Pressure of level from which parcel was lifted"
+unidades = "Pa"
+tipoNivel = "pressureFromGroundLayer"
+niveles = [
+    { level = 25500, topLevel = 25500.0, bottomLevel = 0.0 },
+]
