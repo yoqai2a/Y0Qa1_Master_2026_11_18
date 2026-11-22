@@ -1,9 +1,11 @@
-# Dependencias del workflow (descarga de fNNN, creación de NetCDF e histórico).
-# El visor tiene las suyas en _0_Visor/requirements.txt.
+# Dependencias del visor (Streamlit). Streamlit Community Cloud lee este archivo
+# porque está junto al archivo de entrada Y0Qa1_Panel.py.
+streamlit>=1.45,<2
 requests>=2.31,<3
 openpyxl>=3.1,<4
 numpy>=1.26,<3
 netCDF4>=1.6.5,<2
 pandas>=2.1,<4
 pyarrow>=15
-pygrib>=2.1.5,<3
+fpdf2>=2.7.9,<3
+matplotlib>=3.8,<4

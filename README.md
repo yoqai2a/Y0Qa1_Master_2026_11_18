@@ -1,58 +1,47 @@
-# Y0Qa1 · repositorio público
+# Visor Y0Qa1
 
-Este repositorio contiene el código del visor y los workflows de descarga. Las cuentas y sus permisos se guardan en el repositorio privado `privatius`; no copies allí `accounts.json`, tokens ni `secrets.toml`.
+La configuración de usuarios y permisos se carga desde el repositorio privado. Consulta el README de la raíz para definir `AUTH_GITHUB_REPO`, `AUTH_GITHUB_FILE`, `AUTH_GITHUB_BRANCH` y `AUTH_GITHUB_TOKEN` en los secretos del entorno. No guardes `accounts.json` ni tokens en este repositorio público.
 
-## Configuración de los dos repositorios
+Las pestañas Tablas, UV, Corte temporal, Plan y Descarga se muestran según los permisos que devuelva el archivo de cuentas privado. Tablas lee los NetCDF locales bajo `___Data/___NC` o, en Streamlit Cloud, el histórico `___Data/___Historico/YYYYMMDD_CCZ.parquet` guardado por el workflow para cada ciclo (también se leen los históricos anteriores `.csv.gz` y `.csv`).
 
-La lista de tokens, sus permisos exactos y el lugar donde guardarlos está en [TOKENS_Y0QA1.md](TOKENS_Y0QA1.md).
+## Organización del código
 
-En la configuración privada del entorno Streamlit (o en `%USERPROFILE%\.streamlit\secrets.toml` para uso local) define:
+Cada pestaña tiene su propia carpeta con su código y su configuración:
 
-```toml
-AUTH_GITHUB_REPO = "TU_USUARIO/Y0Qa1_Master_2026_11_18_priv"
-AUTH_GITHUB_FILE = "_0_Visor/accounts.json"
-AUTH_GITHUB_BRANCH = "main"
-AUTH_GITHUB_TOKEN = "TOKEN_FG_PRIVATIUS"
+| Ruta | Contenido |
+|---|---|
+| `Y0Qa1_Panel.py` | Archivo de entrada: acceso, sesión, pestañas y panel de descarga. |
+| `accounts.py`, `limitador.py`, `errores.py` | Cuentas, límite de intentos de acceso y mensajes de error. |
+| `tablas/` | **Pestaña Tablas.** `interfaz.py` (pantalla), `calculo.py` (períodos, máximos por área, series), `datos.py` (ciclos, NetCDF, histórico), `variables.py` (las 8 variables), `estilos.py` (paletas y leyendas), `pdf.py` (PDF imprimible) y `archivar_ciclo.py` (histórico del ciclo, lo usa el workflow). |
+| `tablas/configuracion/` | `Puntos.json`, `cierres_tablas.json` y las paletas `rangos_*.json`. |
+| `corte_temporal/` | **Pestaña Corte temporal**, con su propia `configuracion/` (ver su README). |
+| `archivar_corte.py` | Respaldo de perfiles del Corte temporal (lo usa el workflow). |
+| `../_Comun/` | Código compartido: `malla_nc.py` (puntos y celdas de la malla), `control_ciclos.py` (`control.xlsx`) y `registro.py` (logging). |
 
-GITHUB_REPO = "TU_USUARIO/Y0Qa1_Master_2026_11_18"
-GITHUB_TOKEN = "TOKEN_FG_PUBLICUS"
-GITHUB_WORKFLOW = "Get_fnnn.yml"
-```
+Para agregar o cambiar una variable de Tablas basta editar `tablas/variables.py`.
 
-`TOKEN_FG_PRIVATIUS` debe ser un token fine-grained limitado al repo privado, con Contents: read y write. La escritura permite guardar cambios de clave desde el visor. `TOKEN_FG_PUBLICUS` debe limitarse al repo público y contar con Actions: write y Contents: read para consultar `___Data/control.xlsx`. Mantén ambos tokens fuera de Git y no los pegues en esta plantilla.
+## Histórico por ciclo
 
-El archivo privado `accounts.json` contiene hashes con sal y permisos por pestaña. Cada cambio de clave escribe una nueva versión en el historial del repo privado; el visor nunca guarda claves en texto plano.
+Lo genera GitHub Actions después de convertir cada ciclo (o a mano con `python _0_Visor/tablas/archivar_ciclo.py --fecha AAAAMMDD --ciclo HH`; con `--formato csv` produce el CSV comprimido anterior). Contiene todas las horas del ciclo para cada punto y las ocho variables: racha, precipitación, isoterma 0, CAPE, temperatura máxima y mínima, base de nubes y visibilidad, con área, punto, coordenadas, hora UTC, valor, unidad y archivo NetCDF de origen. La racha se guarda en km/h; temperaturas en °C; base de nubes en ft; visibilidad en m; precipitación en mm; CAPE en J/kg; e isoterma 0 en m, sin la aproximación visual a centenas. Si se vuelve a generar el mismo ciclo, se reemplaza su archivo. Los históricos son un respaldo: no se borran automáticamente.
 
-## Abrir localmente
+## Pestaña Tablas
 
-Instala las dependencias desde PowerShell, con esta carpeta como directorio actual:
+- Los controles principales (ciclo, cierre UTC, variable, unidad y leyendas) están siempre visibles. **Acciones y exportación** agrupa guardar el cierre, crear el PDF y exportar a CSV o Excel (resumen por área y detalle de todos los puntos).
+- Bajo los controles se indica el ciclo, el rango de horas de pronóstico disponible y la fecha del archivo.
+- El PDF imprimible incluye los resúmenes por área de precipitación, CAPE, racha de viento e isoterma 0, con el ciclo y el cierre UTC elegidos. El cierre global predeterminado es 12Z.
+- Las columnas diarias muestran `DD_MM_HHZ / DD_MM_HHZ` en UTC. La hora inicial es la hora posterior al cierre seleccionado: por ejemplo, cierre 12Z usa 13Z–12Z del día siguiente; cierre 03Z usa 04Z–03Z; cierre 00Z usa 01Z–00Z.
+- La isoterma 0 puede mostrar el mínimo/máximo del período diario o, al activar el formato especial, los valores de 12Z y 00Z.
+- CAPE usa rangos en J/kg; temperatura usa los límites y colores de `tablas/configuracion/rangos_temperatura.json`. Base de nubes y visibilidad comparten los colores y umbrales equivalentes: en base de nubes los umbrales se expresan en ft y la unidad predeterminada es ft; visibilidad se expresa en m.
+- La precipitación es acumulada desde el inicio del ciclo. En períodos parciales se usa como base el primer valor disponible y como valor final el último disponible hasta el cierre.
 
-```powershell
-python -m pip install -r _0_Visor/requirements.txt
-python Y0Qa1_Visor.py
-```
+## Acceso y sesión
 
-Para ejecutar también la descarga y la creación de NetCDF en tu PC (`_1_Y0Qa1_GetFnnn.py`, `_2_Y0Qa1_CreaNC.py`) instala además las dependencias del workflow: `python -m pip install -r requirements.txt` (incluye `pygrib`).
+- Tras 5 intentos fallidos seguidos para un usuario se bloquea el acceso temporalmente (30 s, que se duplica con cada fallo adicional hasta un máximo de 15 min). El bloqueo termina solo, y los fallos se olvidan tras 30 min o al ingresar correctamente.
+- La sesión se cierra tras 120 minutos sin actividad (se cambia con `SESION_MAX_INACTIVIDAD_MIN` en los secretos).
+- Los mensajes de error muestran un texto simple al usuario; el detalle técnico queda en el registro. Para verlo también en pantalla, define `MOSTRAR_DETALLES_ERROR = "true"` en los secretos.
 
-Para desplegar el visor en Streamlit Community Cloud, usa `_0_Visor/Y0Qa1_Panel.py` como archivo de entrada y agrega los mismos valores en los secretos de la aplicación. Cloud instala las dependencias de `_0_Visor/requirements.txt` (la que está junto al archivo de entrada).
+## Pestaña Corte temporal
 
-Los programas de línea de comandos escriben su registro con `logging`; el nivel se cambia con la variable de entorno `Y0QA1_LOG` (`DEBUG`, `INFO`, `WARNING`).
+Muestra, para un punto, un corte **tiempo × presión** de humedad relativa, temperatura o viento (rapidez con barbas, componente U o componente V), con todos los niveles de 1000 a 200 hPa. Se puede elegir ciclo, área, punto, vista, unidad (nudos, m/s o km/h para el viento), rango de presión y escala vertical (lineal o logarítmica), y descargar la imagen y los datos.
 
-## Datos NetCDF
-
-El workflow guarda el control de ciclos en `___Data/control.xlsx`, los históricos por ciclo en `___Data/___Historico/YYYYMMDD_CCZ.parquet` (respaldo que no se borra solo; los `.csv.gz` anteriores se siguen leyendo) y los NetCDF habilitados en `_2_CreaNC/seleccion_nc.json`. El control registra una fila por fecha y columnas para 00, 06, 12 y 18 UTC. La selección guarda `gust_sfc`, `tp_sfc`, `gh_iso0`, `cape_sfc`, `tmax_2m`, `tmin_2m`, `gh_ceiling` y `vis_sfc`; las demás variables permanecen desactivadas. Se conservan 10 ciclos de seis horas (aproximadamente 60 horas) en la carpeta `___Data/___NC`.
-
-El archivo JSON enumera las variables NetCDF disponibles. Cambia cada valor de `archivos` a `true` o `false`; los ausentes se consideran desactivados. La limpieza retira ciclos antiguos del árbol actual del repositorio, aunque Git mantiene sus objetos en el historial de commits.
-
-El workflow también se programa diariamente a las 04:20, 10:20, 16:20 y 22:20 UTC. Cada ejecución automática procesa el ciclo 00Z, 06Z, 12Z o 18Z correspondiente, respectivamente.
-
-Para ciclos descargados antes de esta modificación, vuelve a iniciar ese ciclo una vez marcando **Forzar aunque control.xlsx indique que ya existe**. El workflow regenerará el ciclo y publicará su histórico; las descargas nuevas lo publican automáticamente.
-
-## Workflow de GitHub Actions
-
-- Las ejecuciones se hacen una a la vez (grupo de concurrencia único) y el script `.github/scripts/publicar.sh` reintenta la publicación si otro proceso publicó antes, integrando su `control.xlsx` sin perder ciclos.
-- En las ejecuciones programadas, si GitHub retrasa el cron más allá de la medianoche UTC, la fecha del ciclo se calcula hacia atrás (el ciclo 18Z que corre a las 00:30 queda con la fecha del día anterior).
-- La fecha escrita a mano se valida antes de instalar nada (formato `AAAAMMDD`, fecha real y no futura).
-- Si el job falla se abre un Issue por ciclo (o se comenta en el que ya está abierto).
-- Las acciones están fijadas por SHA de commit; para actualizarlas, cambia el SHA y el comentario con la versión.
-- Pestaña **Corte temporal**: el workflow crea 76 capas NetCDF más por ciclo (temperatura, humedad y viento u, v en 19 niveles; ver `_0_Visor/corte_temporal/configuracion/`) y guarda un respaldo compacto de perfiles en `___Data/___Historico_Corte/`. Por defecto **no** sube esas capas a GitHub (`publicar_nc_en_git` en `almacenamiento.json`), porque harían crecer mucho el repositorio.
+Todo su código y su configuración están en `corte_temporal/` (ver `corte_temporal/configuracion/README.md`). El respaldo de perfiles queda en `___Data/___Historico_Corte/AAAAMMDD_HHZ.parquet`; para rehacerlo con otros puntos: `python _0_Visor/archivar_corte.py --todos`.
