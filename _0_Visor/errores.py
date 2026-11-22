@@ -10,10 +10,26 @@ from __future__ import annotations
 
 import logging
 import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import streamlit as st
 
 log = logging.getLogger("visor")
+ARCHIVO_LOG = Path(__file__).resolve().parent / "errores_visor.log"
+
+
+def _registrar_en_archivo() -> None:
+    """Deja los errores (con su traza completa) en errores_visor.log, para poder abrirlos y copiarlos."""
+    if any(getattr(h, "_y0qa1", False) for h in log.handlers):
+        return
+    try:
+        manejador = RotatingFileHandler(ARCHIVO_LOG, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+    except OSError:
+        return
+    manejador.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    manejador._y0qa1 = True
+    log.addHandler(manejador)
 
 
 def _acceso_local() -> bool:
@@ -42,8 +58,13 @@ def detalles_visibles() -> bool:
 def mostrar_error(mensaje: str, exc: BaseException | None = None, *, aviso: bool = False) -> None:
     """Muestra ``mensaje`` al usuario y registra la excepción completa."""
     if exc is not None:
+        _registrar_en_archivo()
         log.error("%s | %s: %s", mensaje, type(exc).__name__, exc, exc_info=exc)
     texto = mensaje
-    if exc is not None and detalles_visibles():
-        texto += f"\n\nDetalle técnico: {exc}"
+    if exc is not None:
+        texto += f"\n\nTipo de error: {type(exc).__name__}."
+        if detalles_visibles():
+            texto += f"\n\nDetalle técnico: {exc}"
+        else:
+            texto += f" El detalle completo queda en el archivo {ARCHIVO_LOG.parent.name}/{ARCHIVO_LOG.name}."
     (st.warning if aviso else st.error)(texto)
